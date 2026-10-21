@@ -274,7 +274,7 @@ describe('sään valinta ristiinvalidoinnilla', () => {
     expect(sel.weatherTypes).toContain('liikenneonnettomuus');
     // Tyypit ilman sääselittäjiä eivät voi tulla valituiksi.
     expect(sel.weatherTypes).not.toContain('muu');
-    for (const t of sel.weatherTypes) expect(sel.byType[t].withWeather).toBeGreaterThan(sel.byType[t].noWeather);
+    for (const t of sel.weatherTypes) expect(sel.byType[t].withWeather - sel.byType[t].noWeather).toBeGreaterThanOrEqual(1);
   });
 
   it('hylkää sään, kun sää ei liity hälytyksiin', () => {

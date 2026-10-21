@@ -70,9 +70,17 @@ export interface WeatherSelection {
 }
 
 /**
+ * Vähimmäisparannus (log-uskottavuus, kaikki testivuodet yhteensä), jotta sää otetaan mukaan.
+ * Oikeassa datassa rakennuspalojen parannus oli 0,2: sattuman tasoa, eikä sen perusteella
+ * kannata näyttää jäsenille "lämmitystarve"-syitä. Yksi yksikkö vastaa karkeasti yhden
+ * lisäparametrin hintaa.
+ */
+export const MIN_WEATHER_GAIN = 1;
+
+/**
  * Valitsee tehtävätyypit, joille sää otetaan mukaan: kukin vuosi vuorollaan testijoukkona,
- * ja sää valitaan, jos se parantaa testivuosien yhteenlaskettua log-uskottavuutta verrattuna
- * samaan malliin ilman säätä. Näin sää ei heikennä ennustetta tyypeillä, joihin sillä ei ole
+ * ja sää valitaan, jos se parantaa testivuosien yhteenlaskettua log-uskottavuutta vähintään
+ * MIN_WEATHER_GAIN verrattuna samaan malliin ilman säätä. Näin sää ei heikennä ennustetta tyypeillä, joihin sillä ei ole
  * datassa vaikutusta.
  */
 export function selectWeatherTypes(days: readonly DayContext[], incidents: readonly Incident[]): WeatherSelection {
@@ -99,7 +107,9 @@ export function selectWeatherTypes(days: readonly DayContext[], incidents: reado
       }
     });
   }
-  const weatherTypes = TASK_TYPES.filter((t) => TYPE_FEATURES[t].length > 0 && byType[t].withWeather > byType[t].noWeather);
+  const weatherTypes = TASK_TYPES.filter(
+    (t) => TYPE_FEATURES[t].length > 0 && byType[t].withWeather - byType[t].noWeather >= MIN_WEATHER_GAIN,
+  );
   return { byType, weatherTypes, folds };
 }
 
