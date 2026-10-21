@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ANNUAL_TARGETS, generateDataset } from '../src/data/generator';
 import { daysSinceRain } from '../src/data/weather';
-import { TASK_TYPES, hourOf, monthOf, validateDataset, weekdayOf, type Dataset } from '../src/data/schema';
+import { TASK_TYPES, hourOf, monthOf, validateDataset, validateWeatherDay, weekdayOf, type Dataset } from '../src/data/schema';
 
 const ds = generateDataset();
 // Pitkä simulaatio tilastollisia testejä varten: 5 vuoden otos on liian pieni.
@@ -153,5 +153,25 @@ describe('public/data', () => {
     expect(read('grid.json')).toEqual(ds.grid);
     expect(read('weather.json')).toEqual(ds.weather);
     expect(read('incidents.json')).toEqual(ds.incidents);
+  });
+});
+
+describe('nykysää', () => {
+  it('jatkaa historiaa katkeamatta eikä muuta historiaa', async () => {
+    const { generateCurrentWeather } = await import('../src/data/generator');
+    const current = generateCurrentWeather();
+    expect(current[0]!.date).toBe('2026-01-01');
+    expect(current.at(-1)!.date).toBe('2028-12-31');
+    // Lumipeite ei katoa vuodenvaihteessa.
+    const last = ds.weather.at(-1)!;
+    expect(Math.abs(current[0]!.snowDepthCm - last.snowDepthCm)).toBeLessThan(10);
+    expect(generateDataset().weather).toEqual(ds.weather);
+    expect(current.flatMap(validateWeatherDay)).toEqual([]);
+  });
+
+  it('public/data/weather-current.json on ajan tasalla', async () => {
+    const { generateCurrentWeather } = await import('../src/data/generator');
+    const { readFileSync } = await import('node:fs');
+    expect(JSON.parse(readFileSync('public/data/weather-current.json', 'utf8'))).toEqual(generateCurrentWeather());
   });
 });

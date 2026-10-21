@@ -159,12 +159,24 @@ function seasonal(values: readonly number[], doy: number): number {
   return a + (b - a) * t;
 }
 
-export function generateWeather(rng: Rng, startYear: number, endYear: number): WeatherDay[] {
+/** Sääsimulaation tila, jotta jaksoa voi jatkaa katkeamatta (esim. historiasta nykyhetkeen). */
+export interface WeatherState {
+  anomaly: number;
+  wet: boolean;
+  snow: number;
+  prev: WeatherDay | null;
+}
+
+export const INITIAL_WEATHER_STATE: WeatherState = { anomaly: 0, wet: false, snow: 0, prev: null };
+
+export function simulateWeather(
+  rng: Rng,
+  startYear: number,
+  endYear: number,
+  state: WeatherState = INITIAL_WEATHER_STATE,
+): { weather: WeatherDay[]; state: WeatherState } {
   const out: WeatherDay[] = [];
-  let anomaly = 0;
-  let wet = false;
-  let snow = 0;
-  let prev: WeatherDay | null = null;
+  let { anomaly, wet, snow, prev } = state;
   const phi = 0.85;
 
   for (const d of daysBetween(startYear, endYear)) {
@@ -215,7 +227,7 @@ export function generateWeather(rng: Rng, startYear: number, endYear: number): W
     out.push(day);
     prev = day;
   }
-  return out;
+  return { weather: out, state: { anomaly, wet, snow, prev } };
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +353,7 @@ export function generateDataset(config: Partial<GeneratorConfig> = {}): Dataset 
   if (cfg.endYear < cfg.startYear) throw new Error('endYear < startYear');
   const rng = createRng(cfg.seed);
   const grid = buildGrid(cfg.cellSizeM);
-  const weather = generateWeather(rng, cfg.startYear, cfg.endYear);
+  const weather = simulateWeather(rng, cfg.startYear, cfg.endYear).weather;
   const incidents = generateIncidents(rng, weather, grid);
   return {
     meta: {
@@ -357,4 +369,23 @@ export function generateDataset(config: Partial<GeneratorConfig> = {}): Dataset 
     weather,
     incidents,
   };
+}
+
+/** Montako vuotta simuloitua "nykysäätä" tuotetaan historian jälkeen. */
+export const CURRENT_WEATHER_YEARS = 3;
+
+/**
+ * Simuloitu sää historian jälkeisille vuosille (pilotin "tämän päivän sää" ja viikon ennuste).
+ * Jatkaa historian säätä samasta tilasta, joten lumipeite ja kuivat jaksot eivät katkea
+ * vuodenvaihteessa. Käyttää omaa satunnaislukujonoa, joten historia ei muutu.
+ * Oikeassa versiossa tilalle tulee Ilmatieteen laitoksen havainnot ja ennuste.
+ */
+export function generateCurrentWeather(
+  config: Partial<GeneratorConfig> = {},
+  years = CURRENT_WEATHER_YEARS,
+): WeatherDay[] {
+  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const history = simulateWeather(createRng(cfg.seed), cfg.startYear, cfg.endYear);
+  const rng = createRng((cfg.seed ^ 0x5eed) >>> 0);
+  return simulateWeather(rng, cfg.endYear + 1, cfg.endYear + years, history.state).weather;
 }
