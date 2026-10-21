@@ -19,6 +19,8 @@ npm run build           # tyyppitarkistus ja tuotantoversio hakemistoon dist/
 ```
 
 Tänään-näkymän päivän voi vaihtaa esittelyä varten osoitteessa: `?pvm=2026-01-14`.
+Riskikartan tarkistustila `?geo=1#/kartta` piirtää simulaation painotusalueet (aluerajaus, tiet,
+taajamat) kartalle, jotta niitä voi verrata oikeaan karttaan.
 
 Rakenne:
 
@@ -33,6 +35,7 @@ Rakenne:
 - `src/model/validation.ts`: viimeinen vuosi testijoukkona, vertailu pelkkään keskiarvoon
 - `src/app/todayView.ts`: Tänään-näkymän luvut ja tekstit (puhdas funktio, testattava)
 - `src/app/views/today.ts`, `src/main.ts`, `src/style.css`: käyttöliittymä
+- `src/app/mapView.ts`, `src/app/views/map.ts`: riskikartta (Leaflet, OpenStreetMap-tausta, 1 km ruudut)
 - `public/data/weather-current.json`: simuloitu "nykysää" 2026-2028, jatkaa historiaa katkeamatta.
   Oikeassa versiossa tilalle tulevat Ilmatieteen laitoksen havainnot ja ennuste.
 - `scripts/build-model.ts`: lukee vain `public/data/*.json`, joten toimii myöhemmin oikealla datalla

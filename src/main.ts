@@ -3,6 +3,7 @@ import { loadAppData, requestedDate } from './app/data';
 import { escapeHtml, todayInHelsinki } from './app/format';
 import { parseRoute, ROUTES, type Route } from './app/router';
 import { buildTodayView } from './app/todayView';
+import { mountMap, renderMapShell } from './app/views/map';
 import { renderToday, simulationNote } from './app/views/today';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -16,16 +17,24 @@ app.innerHTML = `
 `;
 
 const view = document.querySelector<HTMLElement>('#view')!;
+/** Edellisen näkymän siivous (esim. Leaflet-kartan poisto). */
+let cleanup: (() => void) | null = null;
 
 async function render(route: Route): Promise<void> {
   for (const a of document.querySelectorAll<HTMLAnchorElement>('.tabs a')) {
     a.toggleAttribute('aria-current', a.dataset.route === route);
   }
+  cleanup?.();
+  cleanup = null;
   try {
     const data = await loadAppData();
+    const date = requestedDate(location.search, todayInHelsinki());
     if (route === 'tanaan') {
-      const date = requestedDate(location.search, todayInHelsinki());
       view.innerHTML = renderToday(buildTodayView(data.alarm, data.weather, date), data.meta);
+    } else if (route === 'kartta') {
+      view.innerHTML = renderMapShell(data);
+      const showGeo = new URLSearchParams(location.search).get('geo') === '1';
+      cleanup = mountMap(view, data, date, showGeo);
     } else {
       const label = ROUTES.find((r) => r.route === route)!.label;
       view.innerHTML = `<section class="view"><header class="view-head"><h1>${label}</h1></header>

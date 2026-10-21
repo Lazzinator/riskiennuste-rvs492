@@ -31,6 +31,8 @@ export const AREA_POLYGON: readonly LatLon[] = [
 
 export interface Road {
   name: string;
+  /** Lyhyt nimi ruudun kuvaukseen, esim. "kantatie 52" */
+  shortName: string;
   /** 1 = moottoritie, pienempi = vähemmän liikennettä */
   trafficWeight: number;
   points: readonly LatLon[];
@@ -39,6 +41,7 @@ export interface Road {
 export const ROADS: readonly Road[] = [
   {
     name: 'E18 Turku-Helsinki-moottoritie',
+    shortName: 'E18-moottoritie',
     trafficWeight: 1.0,
     points: [
       [60.405, 23.12],
@@ -50,6 +53,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Kantatie 52 (Salo-Somero)',
+    shortName: 'kantatie 52',
     trafficWeight: 0.7,
     points: [
       [60.395, 23.15],
@@ -62,6 +66,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Kaivolantie ja pohjoiset kylätiet',
+    shortName: 'Kaivolantie',
     trafficWeight: 0.3,
     points: [
       [60.432, 23.266],
@@ -74,6 +79,9 @@ export const ROADS: readonly Road[] = [
 
 export interface Settlement {
   name: string;
+  /** Taivutusmuodot kuvauksiin: "Inkereen lähistö", "Inkereeltä 3 km pohjoiseen" */
+  genitive: string;
+  elative: string;
   center: LatLon;
   /** Suhteellinen asukas- ja rakennustiheys */
   weight: number;
@@ -82,8 +90,8 @@ export interface Settlement {
 }
 
 export const SETTLEMENTS: readonly Settlement[] = [
-  { name: 'Inkere', center: [60.432, 23.266], weight: 1.0, radiusM: 1500 },
-  { name: 'Kaivola', center: [60.447, 23.249], weight: 0.7, radiusM: 1200 },
+  { name: 'Inkere', genitive: 'Inkereen', elative: 'Inkereeltä', center: [60.432, 23.266], weight: 1.0, radiusM: 1500 },
+  { name: 'Kaivola', genitive: 'Kaivolan', elative: 'Kaivolasta', center: [60.447, 23.249], weight: 0.7, radiusM: 1200 },
 ];
 
 const M_PER_DEG_LAT = 111_320;
@@ -233,4 +241,35 @@ export function spatialWeight(type: TaskType, f: CellFeatures): number {
     case 'muu':
       return 0.35 + 0.5 * f.settlement + 0.3 * f.forest;
   }
+}
+
+const DIRECTIONS = ['pohjoiseen', 'koilliseen', 'itään', 'kaakkoon', 'etelään', 'lounaaseen', 'länteen', 'luoteeseen'];
+
+/** Ilmansuunta pisteestä a pisteeseen b illatiivissa, esim. "pohjoiseen". */
+export function directionTo(a: LatLon, b: LatLon): string {
+  const dy = b[0] - a[0];
+  const dx = (b[1] - a[1]) * Math.cos((a[0] * Math.PI) / 180);
+  const bearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  return DIRECTIONS[Math.round(bearing / 45) % 8]!;
+}
+
+/**
+ * Ruudun kuvaus käyttöliittymään lähimmän taajaman tai tien mukaan, esim. "Inkere",
+ * "kantatie 52 lähellä" tai "metsäinen alue, Kaivolasta 6 km pohjoiseen". Ei tarkkoja osoitteita.
+ */
+export function describeCell(cell: GridCell): string {
+  const p: LatLon = [cell.centerLat, cell.centerLon];
+  const bySettlement = SETTLEMENTS.map((s) => ({ s, d: distanceM(p, s.center) })).sort((a, b) => a.d - b.d);
+  const nearest = bySettlement[0]!;
+  if (nearest.d <= nearest.s.radiusM) return nearest.s.name;
+  let best: { road: Road; d: number } | null = null;
+  for (const road of ROADS) {
+    const d = distanceToPolylineM(p, road.points);
+    if (d <= 700 && (!best || d < best.d)) best = { road, d };
+  }
+  if (best) return `${best.road.shortName} lähellä`;
+  if (nearest.d <= 2.5 * nearest.s.radiusM) return `${nearest.s.genitive} lähistö`;
+  const kind = cellFeatures(cell).forest >= 0.5 ? 'metsäinen alue' : 'haja-asutusalue';
+  const km = Math.round(nearest.d / 1000);
+  return `${kind}, ${nearest.s.elative} ${km} km ${directionTo(nearest.s.center, p)}`;
 }

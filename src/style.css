@@ -352,3 +352,149 @@ main {
   outline: 2px solid var(--accent-text);
   outline-offset: -4px;
 }
+
+/* Riskikartta */
+.controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+
+@media (min-width: 30rem) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.controls select {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.5rem;
+  min-height: 2.75rem;
+  width: 100%;
+}
+
+.map-caption {
+  font-size: 0.85rem;
+}
+
+.map {
+  height: 62vh;
+  min-height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  z-index: 0;
+}
+
+/* Leafletin oma vaalea tausta näkyisi ennen tiilien latautumista. */
+.map.leaflet-container {
+  background: #0c0e11;
+}
+
+/* Tumma teema OpenStreetMap-tiilille: käännetään ja himmennetään, jotta riskivärit erottuvat. */
+.map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.75) contrast(0.9) saturate(0.4);
+}
+
+.map .leaflet-control-attribution {
+  background: rgba(17, 20, 24, 0.8);
+  color: var(--muted);
+}
+
+.map .leaflet-control-attribution a {
+  color: var(--text);
+}
+
+.map .leaflet-bar a {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+
+.map .leaflet-popup-content-wrapper,
+.map .leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.map .leaflet-popup-content {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.map .leaflet-popup-content p {
+  margin: 0.3rem 0;
+}
+
+.map .leaflet-popup-content ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.popup-sub {
+  color: var(--muted);
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.swatch {
+  width: 1.4rem;
+  height: 1rem;
+  border-radius: 3px;
+  flex: none;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.hotspots {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hotspots button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0.2rem 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 2rem;
+}

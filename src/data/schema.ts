@@ -15,6 +15,10 @@ export const TASK_TYPES = [
 
 export type TaskType = (typeof TASK_TYPES)[number];
 
+/**
+ * Tehtävätyyppien nimet. Huom: nokipalot hälytetään rakennuspaloina, joten ne sisältyvät
+ * tyyppiin 'rakennuspalo' (ja sen lämmitykseen liittyviin selittäjiin).
+ */
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   ensivaste: 'Ensivaste ja avunanto',
   liikenneonnettomuus: 'Liikenneonnettomuus',
