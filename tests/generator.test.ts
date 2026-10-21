@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ANNUAL_TARGETS, daysSinceRain, generateDataset } from '../src/data/generator';
+import { ANNUAL_TARGETS, generateDataset } from '../src/data/generator';
+import { daysSinceRain } from '../src/data/weather';
 import { TASK_TYPES, hourOf, monthOf, validateDataset, weekdayOf, type Dataset } from '../src/data/schema';
 
 const ds = generateDataset();

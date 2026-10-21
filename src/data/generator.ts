@@ -6,6 +6,7 @@
 
 import { buildGrid, cellFeatures, spatialWeight } from './geo';
 import { createRng, type Rng } from './rng';
+import { daysSinceRain } from './weather';
 import {
   SCHEMA_VERSION,
   TASK_TYPES,
@@ -213,17 +214,6 @@ export function generateWeather(rng: Rng, startYear: number, endYear: number): W
     };
     out.push(day);
     prev = day;
-  }
-  return out;
-}
-
-/** Päiviä edellisestä vähintään 1 mm:n sateesta (0 = satoi tänään). Käytössä myös mallissa. */
-export function daysSinceRain(weather: readonly WeatherDay[]): number[] {
-  const out: number[] = [];
-  let n = 10; // oletetaan jakson alkuun keskimääräinen tilanne
-  for (const w of weather) {
-    n = w.precipMm >= 1 ? 0 : n + 1;
-    out.push(n);
   }
   return out;
 }

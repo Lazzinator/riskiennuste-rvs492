@@ -11,7 +11,9 @@
     "generate-data": "tsx scripts/generate-data.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build-model": "tsx scripts/build-model.ts",
+    "data": "npm run generate-data && npm run build-model"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
