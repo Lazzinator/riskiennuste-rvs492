@@ -1,10 +1,17 @@
-# Julkaisu GitHub Pagesiin. Ajetaan, kun main-haaraan tulee muutoksia, tai käsin Actions-välilehdeltä.
-# Sivu julkaistaan vain, jos tyyppitarkistus, testit ja build menevät läpi.
+# Julkaisu GitHub Pagesiin. Ajetaan, kun main-haaraan tulee muutoksia, joka yö (tuore sää ja
+# ennuste) tai käsin Actions-välilehdeltä.
+#
+# Säätiedot haetaan Ilmatieteen laitoksen avoimesta datasta ja malli opetetaan uudelleen.
+# Jos säähaku epäonnistuu, julkaisu jatkuu ilman säätä: malli opetetaan silloin ilman
+# sääselittäjiä, eikä sivu näytä säätä. Sivu julkaistaan vain, jos testit ja build menevät läpi.
 name: Julkaisu GitHub Pagesiin
 
 on:
   push:
     branches: [main]
+  schedule:
+    # 02:17 UTC = noin 04-05 Suomen aikaa (ajastukset ajetaan vain oletushaarasta)
+    - cron: '17 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -27,12 +34,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Säätiedot (Ilmatieteen laitos)
+        id: weather
+        continue-on-error: true
+        run: npm run fetch-weather
+      - name: Mallin opetus
+        run: npm run build-model
       - name: Tyyppitarkistus
         run: npm run typecheck
       - name: Testit
         run: npm test
       - name: Build
         run: npm run build
+      - name: Yhteenveto
+        if: always()
+        run: |
+          {
+            echo "### Julkaisu"
+            echo "- Säähaku: ${{ steps.weather.outcome }}"
+            echo '```'
+            cat public/data/meta.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -613,3 +613,8 @@ details summary {
 .notice-card {
   border-left: 4px solid var(--accent);
 }
+
+.swatch-empty {
+  border: 1px solid var(--muted);
+  background: transparent;
+}

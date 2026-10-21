@@ -1,15 +1,10 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildMapView, periodExpectation, riskClassOf, RISK_CLASSES, RISK_COLORS } from '../src/app/mapView';
 import { buildGrid, describeCell, directionTo, SETTLEMENTS } from '../src/data/geo';
-import { TASK_TYPES, type Grid, type WeatherDay } from '../src/data/schema';
-import type { AlarmModel } from '../src/model/alarmModel';
-import type { SpatialModel } from '../src/model/spatialModel';
+import { TASK_TYPES } from '../src/data/schema';
+import { simulated } from './fixtures';
 
-const read = <T>(f: string): T => JSON.parse(readFileSync(`public/data/${f}`, 'utf8')) as T;
-const { alarm, spatial } = read<{ alarm: AlarmModel; spatial: SpatialModel }>('model.json');
-const grid = read<Grid>('grid.json');
-const weather = [...read<WeatherDay[]>('weather.json'), ...read<WeatherDay[]>('weather-current.json')];
+const { alarm, spatial, grid, weather } = simulated;
 const today = '2026-10-21';
 
 describe('ruudun kuvaus', () => {
@@ -19,12 +14,14 @@ describe('ruudun kuvaus', () => {
     expect(directionTo([60, 23], [59.9, 22.8])).toBe('lounaaseen');
   });
 
-  it('nimeää taajaman, tien tai suunnan ja etäisyyden', () => {
+  it('nimeää taajaman, sen lähistön tai suunnan ja etäisyyden', () => {
     const descriptions = new Set(buildGrid().cells.map(describeCell));
     expect(descriptions).toContain('Inkere');
     expect(descriptions).toContain('Kaivola');
-    expect(descriptions).toContain('kantatie 52 lähellä');
-    expect([...descriptions].some((d) => /^(metsäinen alue|haja-asutusalue), (Inkereeltä|Kaivolasta) \d+ km /.test(d))).toBe(true);
+    expect(descriptions).toContain('Kaivolan lähistö');
+    expect([...descriptions].some((d) => /^(Inkereeltä|Kaivolasta|Salon keskustasta) \d+ km [a-zä]+$/.test(d))).toBe(true);
+    // Salon keskusta tunnistetaan, vaikka se on simulaation alueen ulkopuolella.
+    expect(describeCell({ ...grid.cells[0]!, centerLat: 60.384, centerLon: 23.126 })).toBe('Salon keskusta');
     // Taajaman keskiruutu on taajama itse.
     const inkere = SETTLEMENTS[0]!;
     const cell = grid.cells.find(
@@ -67,12 +64,11 @@ describe('riskikartan näkymä', () => {
     expect(perYear).toBeLessThan(65);
   });
 
-  it('liikenneonnettomuuksien kärkiruudut ovat teiden varsilla, maastopalojen metsissä', () => {
+  it('liikenneonnettomuudet keskittyvät tiettyihin ruutuihin, maastopalot kauemmas taajamista', () => {
     const traffic = buildMapView(alarm, spatial, grid, weather, { period: 'vuosi', task: 'liikenneonnettomuus', today });
-    expect(traffic.hotspots[0]!.description).toMatch(/lähellä$/);
     expect(traffic.hotspots[0]!.riskClass).toBeGreaterThanOrEqual(3);
     const fires = buildMapView(alarm, spatial, grid, weather, { period: 'vuosi', task: 'maastopalo', today });
-    expect(fires.hotspots[0]!.description).toMatch(/^metsäinen alue/);
+    expect(fires.hotspots[0]!.description).toMatch(/ km /);
   });
 
   it('kärkilistassa on eri alueita, ja tehtäväjakauma näytetään vain kaikille tehtäville', () => {

@@ -6,7 +6,7 @@
 
 import { buildGrid, cellFeatures, spatialWeight } from './geo';
 import { createRng, type Rng } from './rng';
-import { daysSinceRain, temperatureChange } from './weather';
+import { daysSinceRain, deriveSlipperiness, stepSnowDepth, temperatureChange } from './weather';
 import {
   SCHEMA_VERSION,
   TASK_TYPES,
@@ -34,52 +34,51 @@ export const DEFAULT_CONFIG: GeneratorConfig = {
   cellSizeM: 1000,
 };
 
-/** Odotettu hälytysmäärä vuodessa tehtävätyypeittäin. Summa noin 57. */
+/**
+ * Odotettu hälytysmäärä vuodessa tehtävätyypeittäin, kalibroitu RVS492:n PRONTO-datan
+ * tasoon 2021-2026 (yhteensä noin 56 vuodessa).
+ */
 export const ANNUAL_TARGETS: Record<TaskType, number> = {
-  ensivaste: 14,
-  liikenneonnettomuus: 10,
-  rakennuspalo: 4,
-  maastopalo: 5,
-  muu_tulipalo: 5,
-  vahingontorjunta: 6,
-  automaattinen_paloilmoitus: 7,
-  muu: 6,
+  rakennuspalo: 20,
+  tarkastustehtava: 8,
+  liikenneonnettomuus: 8,
+  vahingontorjunta: 8,
+  maastopalo: 5.5,
+  muu_tulipalo: 4,
+  muu: 3,
 };
 
 /** Kiireellisyysluokkien todennäköisyydet A, B, C, D. */
 const URGENCY_PROBS: Record<TaskType, readonly [number, number, number, number]> = {
-  ensivaste: [0.25, 0.5, 0.2, 0.05],
-  liikenneonnettomuus: [0.3, 0.5, 0.15, 0.05],
-  rakennuspalo: [0.6, 0.35, 0.05, 0],
-  maastopalo: [0.1, 0.5, 0.35, 0.05],
-  muu_tulipalo: [0.1, 0.5, 0.35, 0.05],
-  vahingontorjunta: [0, 0.1, 0.5, 0.4],
-  automaattinen_paloilmoitus: [0, 0.85, 0.15, 0],
-  muu: [0, 0.05, 0.4, 0.55],
+  rakennuspalo: [0.05, 0.8, 0.13, 0.02],
+  tarkastustehtava: [0, 0.6, 0.4, 0],
+  liikenneonnettomuus: [0.05, 0.75, 0.2, 0],
+  vahingontorjunta: [0, 0.4, 0.5, 0.1],
+  maastopalo: [0, 0.6, 0.35, 0.05],
+  muu_tulipalo: [0, 0.6, 0.38, 0.02],
+  muu: [0, 0.3, 0.5, 0.2],
 };
 
 // Kuukausikertoimet tammi...joulu
 const MONTH_FACTORS: Record<TaskType, readonly number[]> = {
-  ensivaste: [1, 1, 1, 1, 1, 1.1, 1.15, 1.1, 1, 1, 1, 1.05],
   liikenneonnettomuus: [1.3, 1.2, 1.0, 0.85, 0.85, 0.95, 1.05, 0.95, 0.9, 1.0, 1.15, 1.3],
   // Talven ylimäärä tulee pääosin lämmityksestä (sääkerroin), kuukausi kuvaa lähinnä joulua ja saunomista.
   rakennuspalo: [1.1, 1.05, 1.0, 0.95, 0.9, 0.9, 0.95, 0.9, 0.9, 1.0, 1.05, 1.25],
   maastopalo: [0.05, 0.05, 0.3, 2.5, 3.0, 2.2, 1.4, 1.0, 0.5, 0.2, 0.05, 0.05],
   muu_tulipalo: [0.9, 0.8, 0.9, 1.2, 1.3, 1.2, 1.2, 1.1, 0.9, 0.9, 0.8, 1.0],
   vahingontorjunta: [1.2, 1.0, 0.9, 0.9, 0.8, 0.9, 1.0, 1.1, 1.0, 1.2, 1.2, 1.2],
-  automaattinen_paloilmoitus: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  tarkastustehtava: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   muu: [0.8, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.2, 1.1, 0.9, 0.9, 0.8],
 };
 
 // Viikonpäiväkertoimet ma...su
 const WEEKDAY_FACTORS: Record<TaskType, readonly number[]> = {
-  ensivaste: [1, 1, 1, 1, 1.05, 1.1, 1.0],
   liikenneonnettomuus: [0.9, 0.9, 0.9, 1.0, 1.3, 1.15, 1.0],
   rakennuspalo: [0.9, 0.9, 0.9, 0.95, 1.05, 1.3, 1.15],
   maastopalo: [0.9, 0.9, 0.9, 0.95, 1.05, 1.25, 1.2],
   muu_tulipalo: [0.9, 0.9, 0.9, 0.95, 1.15, 1.25, 1.1],
   vahingontorjunta: [1, 1, 1, 1, 1, 1, 1],
-  automaattinen_paloilmoitus: [1.15, 1.15, 1.15, 1.15, 1.1, 0.7, 0.6],
+  tarkastustehtava: [1.15, 1.15, 1.15, 1.15, 1.1, 0.7, 0.6],
   muu: [0.95, 0.95, 0.95, 0.95, 1.05, 1.15, 1.1],
 };
 
@@ -108,13 +107,12 @@ const HOUR_PROFILES = {
 } as const;
 
 const HOUR_PROFILE_OF: Record<TaskType, readonly number[]> = {
-  ensivaste: HOUR_PROFILES.generic,
   liikenneonnettomuus: HOUR_PROFILES.traffic,
   rakennuspalo: HOUR_PROFILES.building,
   maastopalo: HOUR_PROFILES.wildland,
   muu_tulipalo: HOUR_PROFILES.building,
   vahingontorjunta: HOUR_PROFILES.generic,
-  automaattinen_paloilmoitus: HOUR_PROFILES.alarm,
+  tarkastustehtava: HOUR_PROFILES.alarm,
   muu: HOUR_PROFILES.generic,
 };
 
@@ -197,23 +195,13 @@ export function simulateWeather(
     const precipMm = wet ? -Math.log(1 - rng.next()) * CLIMATE_WET_MEAN_MM[month]! : 0;
 
     // Lumi: sade tulee lumena pakkasella, sulaa astepäivämallilla.
-    const snowfallCm = tempMean < 0.5 ? precipMm : 0;
-    const melt = tempMax > 0 ? 1.0 * Math.max(0, tempMean + 1) : 0;
-    snow = Math.max(0, snow * 0.99 + snowfallCm - melt);
+    snow = stepSnowDepth(snow, tempMean, tempMax, precipMm);
 
     let wind = CLIMATE_WIND[month]! * Math.exp(rng.normal(0, 0.35));
     // Satunnaiset myrskypäivät, useimmin syksyllä ja talvella.
     if (rng.next() < 0.004 + 0.012 * winterness) wind += 5 + 6 * rng.next();
 
-    let slip = 0;
-    if (tempMin <= 0.5) {
-      const nearZero = tempMax >= -1.5;
-      if (snowfallCm >= 3) slip = Math.max(slip, 2);
-      if (nearZero && precipMm > 0.3) slip = Math.max(slip, 2);
-      if (tempMean > -1.5 && tempMean < 1.5 && precipMm >= 2 && snowfallCm === 0) slip = 3;
-      if (prev && (prev.precipMm > 0.5 || (prev.tempMax > 0 && snow > 0))) slip = Math.max(slip, 1);
-      if (nearZero && snow > 0) slip = Math.max(slip, 1);
-    }
+    const slip = deriveSlipperiness({ tempMean, tempMin, tempMax, precipMm }, snow, prev);
 
     const day: WeatherDay = {
       date: isoDate(d),
@@ -223,7 +211,7 @@ export function simulateWeather(
       precipMm: round1(precipMm),
       snowDepthCm: Math.round(snow),
       windMs: round1(wind),
-      slipperiness: slip as WeatherDay['slipperiness'],
+      slipperiness: slip,
     };
     out.push(day);
     prev = day;
@@ -266,9 +254,7 @@ export function weatherFactor(type: TaskType, { w, dry, tempChange }: DayContext
       return 1 + 0.03 * Math.min(dry, 15);
     case 'vahingontorjunta':
       return 1 + 0.4 * Math.max(0, w.windMs - 8) + (w.precipMm >= 15 ? 1.5 : 0);
-    case 'ensivaste':
-      return 1 + 0.15 * w.slipperiness;
-    case 'automaattinen_paloilmoitus':
+    case 'tarkastustehtava':
     case 'muu':
       return 1;
   }
@@ -372,6 +358,7 @@ export function generateDataset(config: Partial<GeneratorConfig> = {}): Dataset 
       startDate: weather[0]!.date,
       endDate: weather[weather.length - 1]!.date,
       incidentCount: incidents.length,
+      weatherSource: 'simulated',
       schemaVersion: SCHEMA_VERSION,
       note: 'Simuloitu data. Ei perustu todellisiin hälytyksiin eikä ole virallinen ennuste.',
     },

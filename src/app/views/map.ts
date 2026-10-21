@@ -2,7 +2,6 @@
 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { AREA_CENTER, AREA_POLYGON, ROADS, SETTLEMENTS } from '../../data/geo';
 import { TASK_TYPES, TASK_TYPE_LABELS } from '../../data/schema';
 import type { AppData } from '../data';
 import { escapeHtml as esc, fmtDate, fmtNum, fmtPercent } from '../format';
@@ -35,12 +34,11 @@ function cellPopup(c: MapCell, period: MapPeriod): string {
     <p>${amount}</p>${types}`;
 }
 
-function periodText(view: ReturnType<typeof buildMapView>): string {
-  if (!view.dates) return 'Historiallinen keskiarvo ilman päivän säätä';
+function periodText(view: ReturnType<typeof buildMapView>, usesWeather: boolean): string {
+  if (!view.dates) return 'historiallinen keskiarvo';
   const label = (d: string): string => fmtDate(d, (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7);
-  return view.dates.first === view.dates.last
-    ? `${label(view.dates.first)}, päivän ennustettu sää huomioitu`
-    : `${label(view.dates.first)}-${label(view.dates.last)}, ennustettu sää huomioitu`;
+  const range = view.dates.first === view.dates.last ? label(view.dates.first) : `${label(view.dates.first)}-${label(view.dates.last)}`;
+  return `${range}, ${usesWeather ? 'ennustettu sää huomioitu' : 'vuodenaika ja viikonpäivä huomioitu'}`;
 }
 
 export function renderMapShell(data: AppData): string {
@@ -53,8 +51,11 @@ export function renderMapShell(data: AppData): string {
       (t) => `<option value="${t}"${t === state.task ? ' selected' : ''}>${esc(TASK_TYPE_LABELS[t])}</option>`,
     ),
   ].join('');
-  const legend = RISK_CLASSES.map(
-    (c, i) => `<li><span class="swatch" style="background:${RISK_COLORS[i]}"></span>${esc(c.label)}</li>`,
+  // Pienin luokka piirretään kartalle lähes läpinäkyvänä, joten selitteessäkin vain ääriviiva.
+  const legend = RISK_CLASSES.map((c, i) =>
+    i === 0
+      ? `<li><span class="swatch swatch-empty"></span>${esc(c.label)} (ei väriä)</li>`
+      : `<li><span class="swatch" style="background:${RISK_COLORS[i]}"></span>${esc(c.label)}</li>`,
   ).join('');
 
   return `
@@ -87,12 +88,15 @@ export function renderMapShell(data: AppData): string {
 }
 
 /** Luo kartan valmiiksi renderöityyn runkoon. Palauttaa siivousfunktion. */
-export function mountMap(root: HTMLElement, data: AppData, today: string, showGeo: boolean): () => void {
+export function mountMap(root: HTMLElement, data: AppData, today: string): () => void {
+  const first = data.grid.cells[0]!;
   const map = L.map(root.querySelector<HTMLElement>('#map')!, {
-    center: [AREA_CENTER[0], AREA_CENTER[1]],
-    zoom: 11,
+    center: [first.centerLat, first.centerLon],
+    zoom: 10,
     zoomSnap: 0.5,
     attributionControl: true,
+    // Canvas on puhelimella selvästi kevyempi kuin SVG, kun ruutuja on toista tuhatta.
+    preferCanvas: true,
   });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 16,
@@ -103,29 +107,6 @@ export function mountMap(root: HTMLElement, data: AppData, today: string, showGe
   const rects = new Map<string, L.Rectangle>();
   const caption = root.querySelector<HTMLElement>('#map-caption')!;
   const hotspotList = root.querySelector<HTMLOListElement>('#map-hotspots')!;
-
-  if (showGeo) {
-    // Tarkistustila (?geo=1): simulaation painotusalueet ruutujen päällä, oikeaa karttaa vasten.
-    map.createPane('geo').style.zIndex = '450';
-    const pane = 'geo';
-    L.polygon(AREA_POLYGON.map((p) => [p[0], p[1]] as [number, number]), {
-      pane,
-      color: '#ffffff',
-      weight: 2,
-      fill: false,
-      dashArray: '6 6',
-    }).addTo(map);
-    for (const r of ROADS) {
-      L.polyline(r.points.map((p) => [p[0], p[1]] as [number, number]), { pane, color: '#4fc3f7', weight: 3 })
-        .bindTooltip(r.name)
-        .addTo(map);
-    }
-    for (const s of SETTLEMENTS) {
-      L.circle([s.center[0], s.center[1]], { pane, radius: s.radiusM, color: '#ffd54f', weight: 2, fill: false })
-        .bindTooltip(s.name)
-        .addTo(map);
-    }
-  }
 
   const draw = (): void => {
     const view = buildMapView(data.alarm, data.spatial, data.grid, data.weather, { ...state, today });
@@ -139,15 +120,17 @@ export function mountMap(root: HTMLElement, data: AppData, today: string, showGe
         ],
         {
           color: '#111418',
-          weight: 1,
+          weight: 0.5,
           fillColor: RISK_COLORS[c.riskClass],
-          fillOpacity: 0.6,
+          // Pienimmän luokan ruudut lähes läpinäkyviä, jotta taustakartta (kylät, tiet) erottuu.
+          fillOpacity: c.riskClass === 0 ? 0.12 : 0.6,
+          stroke: c.riskClass > 0,
         },
       ).bindPopup(cellPopup(c, state.period));
       rect.addTo(cellLayer);
       rects.set(c.id, rect);
     }
-    caption.textContent = `${view.taskLabel}, ${view.periodLabel.toLowerCase()}: ${periodText(view)}.`;
+    caption.textContent = `${view.taskLabel}, ${view.periodLabel.toLowerCase()}: ${periodText(view, data.alarm.usesWeather)}.`;
     hotspotList.innerHTML = view.hotspots
       .map(
         (h) =>

@@ -47,14 +47,13 @@ export function capitalize(s: string): string {
 
 /** Partitiivimuodot lauseisiin "liukas keli: liikenneonnettomuuksia +40 %". */
 export const TASK_PARTITIVE: Record<TaskType, string> = {
-  ensivaste: 'ensivastetehtäviä',
-  liikenneonnettomuus: 'liikenneonnettomuuksia',
   rakennuspalo: 'rakennuspaloja',
+  tarkastustehtava: 'tarkastustehtäviä',
+  liikenneonnettomuus: 'liikenneonnettomuuksia',
+  vahingontorjunta: 'vahingontorjuntatehtäviä',
   maastopalo: 'maastopaloja',
   muu_tulipalo: 'muita tulipaloja',
-  vahingontorjunta: 'vahingontorjuntatehtäviä',
-  automaattinen_paloilmoitus: 'automaattisia paloilmoituksia',
-  muu: 'eläinpelastus- ja muita tehtäviä',
+  muu: 'avunanto- ja muita tehtäviä',
 };
 
 /** Tämä päivä Suomen aikaa muodossa YYYY-MM-DD. */

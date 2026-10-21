@@ -1,33 +1,35 @@
-// Yhteinen dataskeema. Sekä simuloitu data että myöhemmin CSV:stä tuotava oikea data
-// muunnetaan tähän muotoon, jotta malli ja käyttöliittymä eivät riipu datan lähteestä.
+// Yhteinen dataskeema. Sekä simuloitu data että PRONTOsta tuotu oikea data muunnetaan
+// tähän muotoon, jotta malli ja käyttöliittymä eivät riipu datan lähteestä.
 
-/** Tehtävätyypit. Tunniste pysyy vakaana, nimi on käyttöliittymää varten. */
+/**
+ * Tehtävätyypit. Tunniste pysyy vakaana, nimi on käyttöliittymää varten. Jako perustuu
+ * RVS492:n todelliseen tehtäväjakaumaan 2021-2026; PRONTOn onnettomuustyypit yhdistetään
+ * näihin tiedostossa src/data/pronto.ts.
+ */
 export const TASK_TYPES = [
-  'ensivaste',
-  'liikenneonnettomuus',
   'rakennuspalo',
+  'tarkastustehtava',
+  'liikenneonnettomuus',
+  'vahingontorjunta',
   'maastopalo',
   'muu_tulipalo',
-  'vahingontorjunta',
-  'automaattinen_paloilmoitus',
   'muu',
 ] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];
 
 /**
- * Tehtävätyyppien nimet. Huom: nokipalot hälytetään rakennuspaloina, joten ne sisältyvät
- * tyyppiin 'rakennuspalo' (ja sen lämmitykseen liittyviin selittäjiin).
+ * Tehtävätyyppien nimet. Rakennuspaloon kuuluvat myös rakennuspalovaarat ja nokipalot, koska
+ * ne hälytetään rakennuspaloina.
  */
 export const TASK_TYPE_LABELS: Record<TaskType, string> = {
-  ensivaste: 'Ensivaste ja avunanto',
+  rakennuspalo: 'Rakennuspalo tai -palovaara',
+  tarkastustehtava: 'Tarkastustehtävä',
   liikenneonnettomuus: 'Liikenneonnettomuus',
-  rakennuspalo: 'Rakennuspalo',
+  vahingontorjunta: 'Vahingontorjunta',
   maastopalo: 'Maastopalo',
   muu_tulipalo: 'Muu tulipalo',
-  vahingontorjunta: 'Vahingontorjunta',
-  automaattinen_paloilmoitus: 'Automaattinen paloilmoitus',
-  muu: 'Eläinpelastus ja muu',
+  muu: 'Avunanto ja muut',
 };
 
 /** Kiireellisyysluokat A (kiireellisin) ... D. */
@@ -46,7 +48,11 @@ export interface Incident {
   taskType: TaskType;
   urgency: Urgency;
   /** Viittaus GridCell.id:hen. */
-  cellId: string;
+  /**
+   * Viittaus GridCell.id:hen. Julkaistussa oikeassa datassa null: sijainnit käsitellään vain
+   * tuonnissa, ja julkaistaan pelkkä tasoitettu tiheys (ks. scripts/import-pronto.ts).
+   */
+  cellId: string | null;
 }
 
 /**
@@ -68,6 +74,8 @@ export interface WeatherDay {
   windMs: number;
   /** Liukkaus 0 = ei, 1 = paikoin, 2 = liukas, 3 = erittäin liukas */
   slipperiness: 0 | 1 | 2 | 3;
+  /** true = sääennuste, ei havainto */
+  forecast?: boolean;
 }
 
 /** Riskikartan ruutu. Rajat WGS84-asteina. */
@@ -91,8 +99,12 @@ export interface Grid {
 
 export type DataSource = 'simulated' | 'pronto';
 
+export type WeatherSource = 'fmi' | 'simulated';
+
 export interface DatasetMeta {
   source: DataSource;
+  /** Säädatan lähde: Ilmatieteen laitoksen havainnot ja ennuste tai simulaatio. */
+  weatherSource: WeatherSource;
   /** Simuloidussa datassa siemenluku, oikeassa datassa null. */
   seed: number | null;
   /** Ensimmäinen ja viimeinen päivä, YYYY-MM-DD. */
@@ -147,7 +159,7 @@ export function validateIncident(inc: Incident, cellIds?: ReadonlySet<string>): 
   if (!isValidTime(inc.time)) errors.push(`virheellinen aika: ${inc.time}`);
   if (!isTaskType(inc.taskType)) errors.push(`tuntematon tehtävätyyppi: ${inc.taskType}`);
   if (!isUrgency(inc.urgency)) errors.push(`tuntematon kiireellisyys: ${inc.urgency}`);
-  if (cellIds && !cellIds.has(inc.cellId)) errors.push(`tuntematon ruutu: ${inc.cellId}`);
+  if (cellIds && inc.cellId !== null && !cellIds.has(inc.cellId)) errors.push(`tuntematon ruutu: ${inc.cellId}`);
   return errors.map((e) => `${inc.id || '?'}: ${e}`);
 }
 

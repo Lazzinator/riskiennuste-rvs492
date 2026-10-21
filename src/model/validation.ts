@@ -1,7 +1,7 @@
 // Mallin validointi: opetus kaikilla paitsi viimeisellä vuodella, testaus viimeisellä vuodella.
 // Vertailukohta on "pelkkä keskiarvo": jokaiselle tehtävätyypille sama odotusarvo joka päivä.
 
-import { TASK_TYPES, type Dataset, type TaskType } from '../data/schema';
+import { TASK_TYPES, type Dataset, type Grid, type Incident, type TaskType } from '../data/schema';
 import { fitAlarmModel, dailyCounts, expectedByType, predictDay, type AlarmModel, type RiskLevel } from './alarmModel';
 import { buildDayContexts, type DayContext } from './features';
 import { fitSpatialModel } from './spatialModel';
@@ -37,8 +37,13 @@ export interface ValidationReport {
   /** Testivuoden päivät ennustetun riskitason mukaan: toteutuuko korkeampi taso todella? */
   riskLevels: Array<{ level: RiskLevel; days: number; expectedPerDay: number; actualPerDay: number }>;
   /** Riskikartta: testihälytysten keskimääräinen log-pistemäärä verrattuna tasajakaumaan. */
-  spatialLogScoreVsUniform: number;
-  /** Maastopaloindeksi koko aineistossa (indeksiä ei sovitettu datan perusteella). */
+  spatialLogScoreVsUniform: number | null;
+  /** Onko malli opetettu sääselittäjien kanssa. */
+  usesWeather: boolean;
+  /**
+   * Maastopaloindeksi koko aineistossa (indeksiä ei sovitettu datan perusteella).
+   * Tyhjä, jos oikeaa säädataa ei ole.
+   */
   wildfire: Array<{ level: WildfireLevel; days: number; fires: number; firesPer100Days: number }>;
 }
 
@@ -54,23 +59,57 @@ const poissonLogLik = (y: number, lambda: number): number =>
 const poissonDeviance = (y: number, lambda: number): number =>
   2 * ((y > 0 ? y * Math.log(y / Math.max(lambda, 1e-12)) : 0) - (y - lambda));
 
-export function splitByLastYear(days: readonly DayContext[]): { train: DayContext[]; test: DayContext[]; testYear: string } {
-  const testYear = days[days.length - 1]!.date.slice(0, 4);
+/** Testijakson ensimmäinen päivä: viimeiset 365 päivää päättyen annettuun päivään. */
+export function testStartFor(lastDate: string): string {
+  const d = new Date(`${lastDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 364);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Viimeiset 365 päivää testijoukoksi, aiemmat opetukseen. */
+export function splitLastYear(days: readonly DayContext[]): { train: DayContext[]; test: DayContext[]; testStart: string } {
+  const testStart = testStartFor(days[days.length - 1]!.date);
   return {
-    train: days.filter((d) => d.date.slice(0, 4) < testYear),
-    test: days.filter((d) => d.date.slice(0, 4) === testYear),
-    testYear,
+    train: days.filter((d) => d.date < testStart),
+    test: days.filter((d) => d.date >= testStart),
+    testStart,
   };
 }
 
-export function validateModel(ds: Dataset): ValidationReport {
-  const days = buildDayContexts(ds.weather);
-  const { train, test, testYear } = splitByLastYear(days);
-  if (train.length === 0 || test.length === 0) throw new Error('validointi vaatii vähintään kaksi vuotta dataa');
-  const trainInc = ds.incidents.filter((i) => i.time.slice(0, 4) < testYear);
-  const testInc = ds.incidents.filter((i) => i.time.slice(0, 4) === testYear);
+/**
+ * Riskikartan validointi: opetus ennen testijakson alkua, testihälytysten keskimääräinen
+ * log-pistemäärä tasajakaumaan verrattuna. null, jos hälytyksillä ei ole sijaintia.
+ */
+export function spatialValidation(grid: Grid, incidents: readonly Incident[], testStart: string): number | null {
+  const located = incidents.filter((i) => i.cellId !== null);
+  const train = located.filter((i) => i.time.slice(0, 10) < testStart);
+  const test = located.filter((i) => i.time.slice(0, 10) >= testStart);
+  if (train.length === 0 || test.length === 0) return null;
+  const spatial = fitSpatialModel(grid, train);
+  const cellIndex = new Map(spatial.cellIds.map((id, i) => [id, i]));
+  const nCells = spatial.cellIds.length;
+  let score = 0;
+  let n = 0;
+  for (const inc of test) {
+    const j = cellIndex.get(inc.cellId!);
+    if (j === undefined) continue;
+    score += Math.log(spatial.shares[inc.taskType][j]! * nCells);
+    n++;
+  }
+  return n ? score / n : null;
+}
 
-  const model: AlarmModel = fitAlarmModel(train, trainInc);
+export function validateModel(ds: Dataset, options: { useWeather?: boolean } = {}): ValidationReport {
+  const useWeather = options.useWeather ?? true;
+  // Vain hälytysaineiston jakso; säätä voi olla myös sen jälkeen (nykysää ja ennuste).
+  const days = buildDayContexts(ds.weather).filter((d) => d.date >= ds.meta.startDate && d.date <= ds.meta.endDate);
+  const { train, test, testStart } = splitLastYear(days);
+  if (train.length < 365 || test.length === 0) throw new Error('validointi vaatii vähintään kaksi vuotta dataa');
+  const testEnd = test[test.length - 1]!.date;
+  const trainInc = ds.incidents.filter((i) => i.time.slice(0, 10) < testStart);
+  const testInc = ds.incidents.filter((i) => i.time.slice(0, 10) >= testStart && i.time.slice(0, 10) <= testEnd);
+
+  const model: AlarmModel = fitAlarmModel(train, trainInc, { useWeather });
   const baselineRate = Object.fromEntries(
     TASK_TYPES.map((t) => [t, model.types[t].trainCount / train.length]),
   ) as Record<TaskType, number>;
@@ -118,14 +157,6 @@ export function validateModel(ds: Dataset): ValidationReport {
     s.actual += TASK_TYPES.reduce((sum, t) => sum + counts[t][i]!, 0);
   });
 
-  const spatial = fitSpatialModel(ds.grid, trainInc);
-  const cellIndex = new Map(spatial.cellIds.map((id, i) => [id, i]));
-  const nCells = spatial.cellIds.length;
-  let spatialScore = 0;
-  for (const inc of testInc) {
-    const j = cellIndex.get(inc.cellId);
-    if (j !== undefined) spatialScore += Math.log(spatial.shares[inc.taskType][j]! * nCells);
-  }
 
   const fireDays = dailyCounts(days, ds.incidents).maastopalo;
   const wf = new Map<WildfireLevel, { days: number; fires: number }>();
@@ -157,12 +188,16 @@ export function validateModel(ds: Dataset): ValidationReport {
         actualPerDay: s.days ? s.actual / s.days : 0,
       };
     }),
-    spatialLogScoreVsUniform: testInc.length ? spatialScore / testInc.length : 0,
-    wildfire: [...wf].map(([level, s]) => ({
-      level,
-      days: s.days,
-      fires: s.fires,
-      firesPer100Days: s.days ? (100 * s.fires) / s.days : 0,
-    })),
+    spatialLogScoreVsUniform: spatialValidation(ds.grid, ds.incidents, testStart),
+    usesWeather: useWeather,
+    // Indeksi lasketaan säästä, joten vertailu oikeisiin paloihin vaatii oikean säädatan.
+    wildfire: useWeather
+      ? [...wf].map(([level, s]) => ({
+          level,
+          days: s.days,
+          fires: s.fires,
+          firesPer100Days: s.days ? (100 * s.fires) / s.days : 0,
+        }))
+      : [],
   };
 }

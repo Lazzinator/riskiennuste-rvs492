@@ -67,7 +67,7 @@ export function fitSpatialModel(
   const typeCounts = Object.fromEntries(TASK_TYPES.map((t) => [t, 0])) as Record<TaskType, number>;
   let total = 0;
   for (const inc of incidents) {
-    const i = index.get(inc.cellId);
+    const i = inc.cellId === null ? undefined : index.get(inc.cellId);
     if (i === undefined) continue;
     for (const [j, w] of kernel(i)) {
       smoothed[inc.taskType][j]! += w;

@@ -35,6 +35,8 @@ export interface AlarmModel {
   trainStart: string;
   trainEnd: string;
   trainDays: number;
+  /** Onko malli sovitettu sääselittäjien kanssa. */
+  usesWeather: boolean;
   /** Keskimääräinen hälytysmäärä päivässä opetusjaksolla. */
   meanDailyTotal: number;
   /**
@@ -52,6 +54,11 @@ export interface FitOptions {
   priorFeature: number;
   priorHour: number;
   iterations: number;
+  /**
+   * false = sovitetaan ilman sääselittäjiä. Käytetään, kun oikeaa säädataa ei ole: oikeat
+   * hälytykset ja simuloitu sää tuottaisivat harhaanjohtavia kertoimia.
+   */
+  useWeather: boolean;
 }
 
 // Valittu ristiinvalidoimalla 30 erillisellä 5 vuoden simulaatiolla (ei oletussiemenellä).
@@ -62,9 +69,15 @@ export const DEFAULT_FIT_OPTIONS: FitOptions = {
   priorFeature: 2,
   priorHour: 15,
   iterations: 60,
+  useWeather: true,
 };
 
 export const THRESHOLD_QUANTILES = { elevated: 0.8, high: 0.95 };
+/**
+ * Riskitasojen alarajat suhteessa keskimääräiseen päivään. Jos päivien väliset erot ovat pieniä
+ * (esim. malli ilman säätä), "korkea" ei saa tarkoittaa vain muutamaa prosenttia tavallista enemmän.
+ */
+export const THRESHOLD_MINIMUMS = { elevated: 1.25, high: 1.6 };
 
 interface FactorGroup {
   key: string;
@@ -76,18 +89,17 @@ interface FactorGroup {
   monotone?: 'increasing' | 'decreasing';
 }
 
-/**
- * Tyyppikohtainen kuukausikutistus. Rakennuspalojen talvihuippu johtuu pääosin lämmityksestä,
- * ja kuukausi ja lämpötila kulkevat lähes yhdessä. Vahva kutistus antaa lämpötilan selittää
- * kausivaihtelun, jolloin malli reagoi myös poikkeuksellisen kylmään syksyyn tai lämpimään talveen.
- */
-export const TYPE_MONTH_PRIOR: Partial<Record<TaskType, number>> = { rakennuspalo: 30 };
+
+const featureKeysFor = (type: TaskType, opt: FitOptions): readonly FeatureKey[] =>
+  opt.useWeather ? TYPE_FEATURES[type] : [];
 
 function groupsFor(type: TaskType, opt: FitOptions): FactorGroup[] {
+  // Kuukausi saa selittää kausivaihtelun vapaasti: RVS492:n datassa rakennuspalojen huippu on
+  // elo-syyskuussa (maatalous), ei lämmityskaudella, joten kausivaihtelua ei pakoteta säälle.
   return [
-    { key: 'month', nLevels: 12, levelOf: (c) => c.month, prior: TYPE_MONTH_PRIOR[type] ?? opt.priorMonth, circular: true },
+    { key: 'month', nLevels: 12, levelOf: (c) => c.month, prior: opt.priorMonth, circular: true },
     { key: 'weekday', nLevels: 7, levelOf: (c) => c.weekday, prior: opt.priorWeekday, circular: false },
-    ...TYPE_FEATURES[type].map((k) => ({
+    ...featureKeysFor(type, opt).map((k) => ({
       key: k,
       nLevels: FEATURES[k].levels.length,
       levelOf: FEATURES[k].levelOf,
@@ -225,7 +237,7 @@ export function fitAlarmModel(
     const hours = new Array<number>(24).fill(0);
     for (const inc of inRange) if (inc.taskType === type) hours[hourOf(inc.time)]!++;
     const features: Partial<Record<FeatureKey, number[]>> = {};
-    TYPE_FEATURES[type].forEach((k, j) => (features[k] = factors[2 + j]!));
+    featureKeysFor(type, opt).forEach((k, j) => (features[k] = factors[2 + j]!));
     types[type] = {
       base,
       month: factors[0]!,
@@ -240,6 +252,7 @@ export function fitAlarmModel(
     trainStart: first,
     trainEnd: last,
     trainDays: days.length,
+    usesWeather: opt.useWeather,
     meanDailyTotal: inRange.length / days.length,
     thresholds: { elevated: 1, high: 1 },
     types,
@@ -248,7 +261,10 @@ export function fitAlarmModel(
     .map((d) => TASK_TYPES.reduce((s, t) => s + expectedByType(model, d)[t], 0) / model.meanDailyTotal)
     .sort((a, b) => a - b);
   const quantile = (q: number): number => ratios[Math.min(ratios.length - 1, Math.floor(q * ratios.length))]!;
-  model.thresholds = { elevated: quantile(THRESHOLD_QUANTILES.elevated), high: quantile(THRESHOLD_QUANTILES.high) };
+  model.thresholds = {
+    elevated: Math.max(THRESHOLD_MINIMUMS.elevated, quantile(THRESHOLD_QUANTILES.elevated)),
+    high: Math.max(THRESHOLD_MINIMUMS.high, quantile(THRESHOLD_QUANTILES.high)),
+  };
   return model;
 }
 
@@ -288,12 +304,15 @@ export interface DayPrediction {
   dampeners: Reason[];
 }
 
+/** Mallin omat sääselittäjät (tyhjä, jos malli on sovitettu ilman säätä). */
+export const featureKeysOf = (m: TypeModel): FeatureKey[] => Object.keys(m.features) as FeatureKey[];
+
 export function expectedByType(model: AlarmModel, ctx: DayContext): Record<TaskType, number> {
   const out = {} as Record<TaskType, number>;
   for (const type of TASK_TYPES) {
     const m = model.types[type];
     let l = m.base * m.month[ctx.month]! * m.weekday[ctx.weekday]!;
-    for (const k of TYPE_FEATURES[type]) l *= m.features[k]![FEATURES[k].levelOf(ctx)]!;
+    for (const k of featureKeysOf(m)) l *= m.features[k]![FEATURES[k].levelOf(ctx)]!;
     out[type] = l;
   }
   return out;
@@ -331,7 +350,7 @@ export function predictDay(model: AlarmModel, ctx: DayContext): DayPrediction {
     const m = model.types[type];
     add(`month:${ctx.month}`, MONTH_NAMES[ctx.month]!, type, m.month[ctx.month]!);
     add(`weekday:${ctx.weekday}`, WEEKDAY_NAMES[ctx.weekday]!, type, m.weekday[ctx.weekday]!);
-    for (const k of TYPE_FEATURES[type]) {
+    for (const k of featureKeysOf(m)) {
       const f = FEATURES[k];
       const level = f.levelOf(ctx);
       if (level === f.neutralLevel) continue;

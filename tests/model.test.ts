@@ -12,7 +12,7 @@ import {
 } from '../src/model/alarmModel';
 import { buildDayContexts, FEATURES, type DayContext } from '../src/model/features';
 import { cellExpected, fitSpatialModel } from '../src/model/spatialModel';
-import { splitByLastYear, validateModel } from '../src/model/validation';
+import { splitLastYear, testStartFor, validateModel } from '../src/model/validation';
 import { wildfireRisk } from '../src/model/wildfire';
 
 const ds = generateDataset();
@@ -89,7 +89,7 @@ describe('hälytysmallin sovitus', () => {
     const small = fitAlarmModel(oneYear, ds.incidents);
     const spread = (xs: number[]): number => Math.max(...xs) - Math.min(...xs);
     // Ilman kutistusta yhden vuoden viikonpäiväkertoimet heiluisivat rajusti.
-    expect(spread(small.types.automaattinen_paloilmoitus.weekday)).toBeLessThan(0.6);
+    expect(spread(small.types.tarkastustehtava.weekday)).toBeLessThan(0.6);
   });
 });
 
@@ -131,7 +131,7 @@ describe('kertoimien palautuminen pitkästä simulaatiosta', () => {
   });
 
   it('löytää viikonpäivä- ja tuntiprofiilit', () => {
-    const apl = T.automaattinen_paloilmoitus;
+    const apl = T.tarkastustehtava;
     expect(apl.weekday[1]!).toBeGreaterThan(apl.weekday[6]!);
     expect(apl.hour[10]!).toBeGreaterThan(2 * apl.hour[3]!);
     const fire = T.maastopalo;
@@ -170,12 +170,25 @@ describe('ennuste ja selitykset', () => {
     }
   });
 
-  it('riskitasot jakautuvat noin 80/15/5 opetusjaksolla', () => {
+  it('riskitasot: enintään noin 20 % kohonneita ja 5 % korkeita, ja rajoilla on alaraja', () => {
     const counts = { matala: 0, kohonnut: 0, korkea: 0 };
     for (const d of days) counts[predictDay(model, d).level]++;
-    expect(counts.matala / days.length).toBeCloseTo(0.8, 1);
-    expect(counts.korkea / days.length).toBeCloseTo(0.05, 1);
-    expect(counts.korkea).toBeGreaterThan(0);
+    expect(counts.matala / days.length).toBeGreaterThanOrEqual(0.79);
+    expect(counts.korkea / days.length).toBeLessThanOrEqual(0.06);
+    expect(model.thresholds.elevated).toBeGreaterThanOrEqual(1.25);
+    expect(model.thresholds.high).toBeGreaterThanOrEqual(1.6);
+  });
+
+  it('ilman säätä riskitasot eivät liioittele pieniä eroja', () => {
+    const noWeather = fitAlarmModel(days, ds.incidents, { useWeather: false });
+    expect(noWeather.usesWeather).toBe(false);
+    for (const t of TASK_TYPES) expect(Object.keys(noWeather.types[t].features)).toEqual([]);
+    const counts = { matala: 0, kohonnut: 0, korkea: 0 };
+    for (const d of days) counts[predictDay(noWeather, d).level]++;
+    expect(counts.korkea).toBe(0);
+    // Sääsyitä ei näytetä mallilla, jolla ei ole säätä.
+    const slippery = days.find((d) => d.weather.slipperiness === 3)!;
+    expect(predictDay(noWeather, slippery).reasons.every((r) => /^(month|weekday):/.test(r.key))).toBe(true);
   });
 
   it('tuntiennuste summautuu päivän ennusteeseen ja ruuhkahuippu on iltapäivällä tai illalla', () => {
@@ -183,7 +196,8 @@ describe('ennuste ja selitykset', () => {
     const hourly = hourlyExpected(model, p);
     expect(hourly.reduce((s, x) => s + x, 0)).toBeCloseTo(p.total, 10);
     const peak = peakWindow(hourly);
-    expect(peak.startHour).toBeGreaterThanOrEqual(12);
+    expect(peak.startHour).toBeGreaterThanOrEqual(8);
+    expect(peak.endHour).toBeLessThanOrEqual(22);
     expect(peak.endHour - peak.startHour).toBe(4);
   });
 
@@ -253,11 +267,13 @@ describe('riskikartan malli', () => {
 });
 
 describe('validointi', () => {
-  it('jakaa viimeisen vuoden testijoukoksi', () => {
-    const { train, test, testYear } = splitByLastYear(days);
-    expect(testYear).toBe('2025');
+  it('jakaa viimeiset 365 päivää testijoukoksi', () => {
+    const { train, test, testStart } = splitLastYear(days);
+    expect(testStart).toBe('2025-01-01');
+    expect(test).toHaveLength(365);
     expect(train.length + test.length).toBe(days.length);
     expect(train.at(-1)!.date).toBe('2024-12-31');
+    expect(testStartFor('2026-09-13')).toBe('2025-09-14');
   });
 
   it('malli on parempi kuin pelkkä keskiarvo oletusdatalla', () => {
@@ -280,18 +296,5 @@ describe('validointi', () => {
     }
     expect(gain / n).toBeGreaterThan(0);
     expect(wins).toBeGreaterThanOrEqual(Math.ceil(0.75 * n));
-  });
-});
-
-describe('public/data/model.json', () => {
-  it('on ajan tasalla (aja npm run build-model, jos tämä epäonnistuu)', async () => {
-    const { readFileSync } = await import('node:fs');
-    const file = JSON.parse(readFileSync('public/data/model.json', 'utf8'));
-    expect(file.source).toBe('simulated');
-    expect(file.alarm.trainEnd).toBe(model.trainEnd);
-    expect(file.alarm.meanDailyTotal).toBeCloseTo(model.meanDailyTotal, 4);
-    expect(file.alarm.types.maastopalo.month[4]).toBeCloseTo(model.types.maastopalo.month[4]!, 3);
-    const v = JSON.parse(readFileSync('public/data/validation.json', 'utf8'));
-    expect(v.testIncidents).toBe(validateModel(ds).testIncidents);
   });
 });

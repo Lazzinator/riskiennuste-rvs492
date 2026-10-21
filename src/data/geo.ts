@@ -31,8 +31,6 @@ export const AREA_POLYGON: readonly LatLon[] = [
 
 export interface Road {
   name: string;
-  /** Lyhyt nimi ruudun kuvaukseen, esim. "kantatie 52" */
-  shortName: string;
   /** 1 = moottoritie, pienempi = vähemmän liikennettä */
   trafficWeight: number;
   points: readonly LatLon[];
@@ -41,7 +39,6 @@ export interface Road {
 export const ROADS: readonly Road[] = [
   {
     name: 'E18 Turku-Helsinki-moottoritie',
-    shortName: 'E18-moottoritie',
     trafficWeight: 1.0,
     points: [
       [60.405, 23.12],
@@ -53,7 +50,6 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Kantatie 52 (Salo-Somero)',
-    shortName: 'kantatie 52',
     trafficWeight: 0.7,
     points: [
       [60.395, 23.15],
@@ -66,7 +62,6 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Kaivolantie ja pohjoiset kylätiet',
-    shortName: 'Kaivolantie',
     trafficWeight: 0.3,
     points: [
       [60.432, 23.266],
@@ -137,27 +132,35 @@ export function pointInPolygon(p: LatLon, poly: readonly LatLon[]): boolean {
   return inside;
 }
 
-/** Muodostaa ruudukon, jonka ruutujen keskipisteet ovat aluerajauksen sisällä. */
-export function buildGrid(cellSizeM = 1000, polygon: readonly LatLon[] = AREA_POLYGON): Grid {
-  const lats = polygon.map((p) => p[0]);
-  const lons = polygon.map((p) => p[1]);
-  const south = Math.min(...lats);
-  const north = Math.max(...lats);
-  const west = Math.min(...lons);
-  const east = Math.max(...lons);
+export interface Bounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+/**
+ * Muodostaa ruudukon annetuille rajoille. Ruudun tunniste kertoo rivin ja sarakkeen.
+ * include rajaa ruudut keskipisteen perusteella (oletus: kaikki).
+ */
+export function buildGridForBounds(
+  b: Bounds,
+  cellSizeM = 1000,
+  include: (center: LatLon) => boolean = () => true,
+): Grid {
   const dLat = cellSizeM / M_PER_DEG_LAT;
-  const dLon = cellSizeM / mPerDegLon((south + north) / 2);
-  const rows = Math.ceil((north - south) / dLat);
-  const cols = Math.ceil((east - west) / dLon);
+  const dLon = cellSizeM / mPerDegLon((b.south + b.north) / 2);
+  const rows = Math.ceil((b.north - b.south) / dLat);
+  const cols = Math.ceil((b.east - b.west) / dLon);
   const round = (x: number): number => Math.round(x * 1e6) / 1e6;
 
   const cells: GridCell[] = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      const s = south + r * dLat;
-      const w = west + c * dLon;
+      const s = b.south + r * dLat;
+      const w = b.west + c * dLon;
       const center: LatLon = [s + dLat / 2, w + dLon / 2];
-      if (!pointInPolygon(center, polygon)) continue;
+      if (!include(center)) continue;
       cells.push({
         id: `r${r}c${c}`,
         row: r,
@@ -172,6 +175,14 @@ export function buildGrid(cellSizeM = 1000, polygon: readonly LatLon[] = AREA_PO
     }
   }
   return { cellSizeM, cells };
+}
+
+/** Simulaation ruudukko: ruudut, joiden keskipiste on aluerajauksen sisällä. */
+export function buildGrid(cellSizeM = 1000, polygon: readonly LatLon[] = AREA_POLYGON): Grid {
+  const lats = polygon.map((p) => p[0]);
+  const lons = polygon.map((p) => p[1]);
+  const bounds = { south: Math.min(...lats), north: Math.max(...lats), west: Math.min(...lons), east: Math.max(...lons) };
+  return buildGridForBounds(bounds, cellSizeM, (center) => pointInPolygon(center, polygon));
 }
 
 /** Ruudun maankäyttöpiirteet 0..1 asteikolla. */
@@ -224,8 +235,6 @@ export function cellFeatures(cell: GridCell): CellFeatures {
 /** Tehtävätyypin suhteellinen paino ruudussa. Ei normalisoitu. */
 export function spatialWeight(type: TaskType, f: CellFeatures): number {
   switch (type) {
-    case 'ensivaste':
-      return 0.2 + 1.5 * f.settlement + 0.3 * f.majorRoad;
     case 'liikenneonnettomuus':
       return 0.03 + 2.5 * f.majorRoad + 0.6 * f.minorRoad;
     case 'rakennuspalo':
@@ -236,7 +245,7 @@ export function spatialWeight(type: TaskType, f: CellFeatures): number {
       return 0.25 + 0.8 * f.settlement + 0.5 * f.majorRoad;
     case 'vahingontorjunta':
       return 0.35 + 0.8 * f.settlement + 0.3 * f.majorRoad;
-    case 'automaattinen_paloilmoitus':
+    case 'tarkastustehtava':
       return 0.02 + 2.0 * f.settlement;
     case 'muu':
       return 0.35 + 0.5 * f.settlement + 0.3 * f.forest;
@@ -254,22 +263,22 @@ export function directionTo(a: LatLon, b: LatLon): string {
 }
 
 /**
- * Ruudun kuvaus käyttöliittymään lähimmän taajaman tai tien mukaan, esim. "Inkere",
- * "kantatie 52 lähellä" tai "metsäinen alue, Kaivolasta 6 km pohjoiseen". Ei tarkkoja osoitteita.
+ * Paikat ruutujen kuvauksiin. Taajamien lisäksi Salon keskusta, koska RVS492:n hälytyksiä on myös
+ * Perttelin ulkopuolella. (Simulaation painotukset käyttävät vain SETTLEMENTS-listaa.)
+ */
+export const PLACES: readonly Settlement[] = [
+  ...SETTLEMENTS,
+  { name: 'Salon keskusta', genitive: 'Salon keskustan', elative: 'Salon keskustasta', center: [60.3842, 23.1253], weight: 0, radiusM: 1500 },
+];
+
+/**
+ * Ruudun kuvaus käyttöliittymään lähimmän paikan mukaan, esim. "Inkere", "Kaivolan lähistö" tai
+ * "Kaivolasta 6 km koilliseen". Ei osoitteita.
  */
 export function describeCell(cell: GridCell): string {
   const p: LatLon = [cell.centerLat, cell.centerLon];
-  const bySettlement = SETTLEMENTS.map((s) => ({ s, d: distanceM(p, s.center) })).sort((a, b) => a.d - b.d);
-  const nearest = bySettlement[0]!;
+  const nearest = PLACES.map((s) => ({ s, d: distanceM(p, s.center) })).sort((a, b) => a.d - b.d)[0]!;
   if (nearest.d <= nearest.s.radiusM) return nearest.s.name;
-  let best: { road: Road; d: number } | null = null;
-  for (const road of ROADS) {
-    const d = distanceToPolylineM(p, road.points);
-    if (d <= 700 && (!best || d < best.d)) best = { road, d };
-  }
-  if (best) return `${best.road.shortName} lähellä`;
   if (nearest.d <= 2.5 * nearest.s.radiusM) return `${nearest.s.genitive} lähistö`;
-  const kind = cellFeatures(cell).forest >= 0.5 ? 'metsäinen alue' : 'haja-asutusalue';
-  const km = Math.round(nearest.d / 1000);
-  return `${kind}, ${nearest.s.elative} ${km} km ${directionTo(nearest.s.center, p)}`;
+  return `${nearest.s.elative} ${Math.round(nearest.d / 1000)} km ${directionTo(nearest.s.center, p)}`;
 }

@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build-model": "tsx scripts/build-model.ts",
-    "data": "npm run generate-data && npm run build-model"
+    "data": "npm run fetch-weather; npm run build-model",
+    "import-pronto": "tsx scripts/import-pronto.ts",
+    "fetch-weather": "tsx scripts/fetch-weather.ts"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.22",
