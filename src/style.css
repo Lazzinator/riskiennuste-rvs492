@@ -1,0 +1,615 @@
+:root {
+  --bg: #111418;
+  --surface: #1b2027;
+  --surface-2: #232a33;
+  --border: #2e3640;
+  --text: #e8eaed;
+  --muted: #9aa3ad;
+  --accent: #c62828;
+  --accent-text: #ff8a80;
+  --level-matala: #4f9d69;
+  --level-kohonnut: #d9a032;
+  --level-korkea: #e5483f;
+  --wf-1: #3d7a57;
+  --wf-2: #7a9a3d;
+  --wf-3: #c9a227;
+  --wf-4: #d9702b;
+  --wf-5: #d6372f;
+  --radius: 14px;
+  --nav-h: 3.75rem;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  font-size: 1rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.sim-banner {
+  background: var(--accent);
+  color: #fff;
+  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 1rem 1rem calc(var(--nav-h) + 1.5rem);
+}
+
+.loading {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.view-head {
+  padding: 0.25rem 0 0.25rem;
+}
+
+.view-head h1 {
+  font-size: 1.75rem;
+  line-height: 1.2;
+}
+
+.eyebrow {
+  color: var(--accent-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.card h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 0.25rem;
+}
+
+.notice {
+  background: var(--surface-2);
+  border-left: 3px solid var(--level-kohonnut);
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+/* Pääkortti */
+.hero {
+  border-top: 4px solid var(--level-color, var(--border));
+}
+
+.level-matala {
+  --level-color: var(--level-matala);
+}
+
+.level-kohonnut {
+  --level-color: var(--level-kohonnut);
+}
+
+.level-korkea {
+  --level-color: var(--level-korkea);
+}
+
+.pill {
+  align-self: flex-start;
+  background: var(--level-color);
+  color: #111;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+}
+
+.big {
+  font-size: 3.25rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  margin-top: 0.25rem;
+}
+
+.big .of {
+  font-size: 1.5rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.big-label {
+  font-weight: 600;
+}
+
+.mid {
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* Syyt */
+.reasons {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.reasons li {
+  display: flex;
+  flex-direction: column;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--accent);
+}
+
+.reasons-down li {
+  border-left-color: var(--level-matala);
+}
+
+.reasons .why {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.reasons span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.types {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.plain {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.875rem;
+}
+
+@media (min-width: 34rem) {
+  .pair {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Maastopalo */
+.wildfire {
+  border-top: 4px solid var(--wf-color);
+}
+
+.wf-1 {
+  --wf-color: var(--wf-1);
+}
+.wf-2 {
+  --wf-color: var(--wf-2);
+}
+.wf-3 {
+  --wf-color: var(--wf-3);
+}
+.wf-4 {
+  --wf-color: var(--wf-4);
+}
+.wf-5 {
+  --wf-color: var(--wf-5);
+}
+
+/* Viikko */
+.week-head,
+.week-row {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem 3.75rem 3rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.week-head {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.week-head span:nth-child(n + 3) {
+  text-align: right;
+}
+
+.week {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.week-row {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.week-day {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+}
+
+.week-day small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.badge {
+  justify-self: start;
+  background: var(--level-color);
+  color: #111;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+}
+
+.week-prob {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-chip {
+  justify-self: end;
+  min-width: 1.75rem;
+  text-align: center;
+  background: var(--wf-color);
+  color: #111;
+  font-weight: 700;
+  border-radius: 6px;
+}
+
+.footnote {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 0.5rem 0;
+}
+
+/* Alanavigaatio puhelimelle */
+.tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--nav-h);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabs a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.tabs a[aria-current] {
+  color: var(--text);
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.tabs a:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -4px;
+}
+
+/* Riskikartta */
+.controls {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.6rem;
+}
+
+@media (min-width: 30rem) {
+  .controls {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.controls select {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.5rem;
+  min-height: 2.75rem;
+  width: 100%;
+}
+
+.map-caption {
+  font-size: 0.85rem;
+}
+
+.map {
+  height: 62vh;
+  min-height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  z-index: 0;
+}
+
+/* Leafletin oma vaalea tausta näkyisi ennen tiilien latautumista. */
+.map.leaflet-container {
+  background: #0c0e11;
+}
+
+/* Tumma teema OpenStreetMap-tiilille: käännetään ja himmennetään, jotta riskivärit erottuvat. */
+.map .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.75) contrast(0.9) saturate(0.4);
+}
+
+.map .leaflet-control-attribution {
+  background: rgba(17, 20, 24, 0.8);
+  color: var(--muted);
+}
+
+.map .leaflet-control-attribution a {
+  color: var(--text);
+}
+
+.map .leaflet-bar a {
+  background: var(--surface);
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+
+.map .leaflet-popup-content-wrapper,
+.map .leaflet-popup-tip {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.map .leaflet-popup-content {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.map .leaflet-popup-content p {
+  margin: 0.3rem 0;
+}
+
+.map .leaflet-popup-content ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.popup-sub {
+  color: var(--muted);
+}
+
+.legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.swatch {
+  width: 1.4rem;
+  height: 1rem;
+  border-radius: 3px;
+  flex: none;
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
+.hotspots {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hotspots button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0.2rem 0;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+  min-height: 2rem;
+}
+
+/* Ajankohdat: lämpökartta */
+.heat-wrap {
+  overflow-x: auto;
+}
+
+.heat {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 1px;
+  table-layout: fixed;
+  font-size: 0.7rem;
+}
+
+.heat th {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  padding: 0;
+}
+
+.heat thead th {
+  height: 1rem;
+}
+
+.heat tbody th {
+  width: 1.6rem;
+  font-size: 0.75rem;
+}
+
+.heat td {
+  height: 1.5rem;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.heat td.selected {
+  outline: 2px solid var(--text);
+  outline-offset: -1px;
+}
+
+.legend-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  font-size: 0.8rem;
+}
+
+/* Kuukausikaavio */
+.chart-box {
+  position: relative;
+  height: 15rem;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 0.35rem 0.4rem 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.data-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.data-table td:not(:first-child),
+.data-table th:not(:first-child) {
+  text-align: right;
+}
+
+/* Tietoa */
+.prose {
+  gap: 0.6rem;
+}
+
+.prose ul,
+.prose ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.prose h3 {
+  margin-top: 0.5rem;
+}
+
+.formula {
+  font-weight: 700;
+  text-align: center;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 0.5rem;
+}
+
+.notice-card {
+  border-left: 4px solid var(--accent);
+}
