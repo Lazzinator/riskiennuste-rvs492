@@ -28,6 +28,24 @@ const latlon = `${FMI_POINT.lat},${FMI_POINT.lon}`;
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 let requests = 0;
+/** Viimeisimmän vastauksen alku vianetsintää varten (ei sisällä mitään salaista). */
+let lastResponseStart = '';
+
+/**
+ * Sijainnin ilmaisutavat kokeilujärjestyksessä. Kaikki kyselyt eivät tue kaikkia, joten
+ * käytetään ensimmäistä, jolla saadaan arvoja. bbox: pituus, leveys, pituus, leveys.
+ */
+const LOCATIONS: Array<[string, Record<string, string | number>]> = [
+  ['piste', { latlon, maxlocations: 4 }],
+  ['alue', { bbox: '22.95,60.30,23.60,60.60' }],
+  ['paikka Salo', { place: 'Salo', maxlocations: 4 }],
+];
+
+function summarize(values: readonly FmiValue[]): string {
+  const filled = values.filter((v) => v.value !== null);
+  const params = [...new Set(values.map((v) => v.param))].join(',');
+  return `${values.length} arvoa, joista ${filled.length} ei-tyhjää; suureet ${params || '-'}; asemia ${stationsOf(values).length}`;
+}
 
 async function get(url: string): Promise<FmiValue[]> {
   for (let attempt = 1; ; attempt++) {
@@ -36,6 +54,7 @@ async function get(url: string): Promise<FmiValue[]> {
     try {
       const res = await fetch(url, { headers: { 'User-Agent': 'riskiennuste-rvs492 (Perttelin VPK, pilotti)' } });
       const text = await res.text();
+      lastResponseStart = text.slice(0, 400).replace(/\s+/g, ' ');
       // Virheilmoitus tulee XML:nä myös HTTP-virhekoodilla; parseSimpleFeatures heittää sen viestin.
       const values = parseSimpleFeatures(text);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -106,37 +125,55 @@ async function main(): Promise<void> {
   const end = addDays(today, -1);
   console.log(`Haetaan havainnot ${start}...${end} pisteen ${latlon} lähimmiltä asemilta.`);
 
-  const daily = await fetchChunked(
+  // Kokeillaan lyhyellä jaksolla, mikä sijainnin ilmaisu toimii, ja haetaan sitten koko jakso.
+  const probeStart = addDays(end, -6);
+  async function fetchWithWorkingLocation(
+    label: string,
+    query: string,
+    params: Record<string, string | number>,
+    chunkDays: number,
+  ): Promise<FmiValue[]> {
+    return firstWorking(label, LOCATIONS.map(([name, loc]): [string, () => Promise<FmiValue[]>] => [
+      name,
+      async () => {
+        const probe = await get(fmiUrl(query, { ...loc, ...params, starttime: `${probeStart}T00:00:00Z`, endtime: `${end}T23:59:59Z` }));
+        console.log(`  ${label} / ${name}, koejakso: ${summarize(probe)}`);
+        if (!probe.some((v) => v.value !== null)) throw new Error(`ei arvoja (vastauksen alku: ${lastResponseStart})`);
+        const all = await fetchChunked(query, { ...loc, ...params }, start, end, chunkDays);
+        console.log(`  ${label} / ${name}, koko jakso: ${summarize(all)}`);
+        return all;
+      },
+    ]));
+  }
+
+  const daily = await fetchWithWorkingLocation(
+    'Päivähavainnot',
     STORED_QUERIES.daily,
-    { latlon, maxlocations: 4, parameters: 'tday,tmin,tmax,rrday,snow' },
-    start,
-    end,
+    { parameters: 'tday,tmin,tmax,rrday,snow' },
     365,
   );
   const wind = await firstWorking('Tuulihavainnot', [
-    [
-      'tuntiarvot',
-      () => fetchChunked(STORED_QUERIES.hourly, { latlon, maxlocations: 2, parameters: 'WS_PT1H_AVG' }, start, end, 31),
-    ],
+    ['tuntiarvot', () => fetchWithWorkingLocation('Tuuli (tunti)', STORED_QUERIES.hourly, { parameters: 'WS_PT1H_AVG' }, 31)],
     [
       '10 min havainnot tunnin välein',
       () =>
-        fetchChunked(
-          STORED_QUERIES.observations,
-          { latlon, maxlocations: 2, parameters: 'ws_10min', timestep: 60 },
-          start,
-          end,
-          7,
-        ),
+        fetchWithWorkingLocation('Tuuli (10 min)', STORED_QUERIES.observations, { parameters: 'ws_10min', timestep: 60 }, 7),
     ],
   ]);
   const observations = dailyFromObservations(daily, wind, start, end);
-  if (observations.length === 0) throw new Error('havaintoja ei saatu');
+  if (observations.length === 0) throw new Error(`havaintoja ei saatu (päiväarvot: ${summarize(daily)})`);
 
-  const forecastParams = { latlon, parameters: 'Temperature,Precipitation1h,WindSpeedMS', timestep: 60 };
+  const forecastParams = { parameters: 'Temperature,Precipitation1h,WindSpeedMS', timestep: 60 };
+  const nonEmpty = async (run: Promise<FmiValue[]>): Promise<FmiValue[]> => {
+    const values = await run;
+    console.log(`  Ennuste: ${summarize(values)}`);
+    if (!values.some((v) => v.value !== null)) throw new Error(`ei arvoja (vastauksen alku: ${lastResponseStart})`);
+    return values;
+  };
   const forecastHourly = await firstWorking('Ennuste', [
-    ['FMI:n muokattu ennuste', () => get(fmiUrl(STORED_QUERIES.forecast, forecastParams))],
-    ['ECMWF-ennuste', () => get(fmiUrl(STORED_QUERIES.forecastFallback, forecastParams))],
+    ['FMI:n muokattu ennuste', () => nonEmpty(get(fmiUrl(STORED_QUERIES.forecast, { latlon, ...forecastParams })))],
+    ['ECMWF-ennuste', () => nonEmpty(get(fmiUrl(STORED_QUERIES.forecastFallback, { latlon, ...forecastParams })))],
+    ['FMI:n muokattu ennuste, paikka Salo', () => nonEmpty(get(fmiUrl(STORED_QUERIES.forecast, { place: 'Salo', ...forecastParams })))],
   ]);
   const forecast = dailyFromForecast(forecastHourly, observations[observations.length - 1]!);
 
