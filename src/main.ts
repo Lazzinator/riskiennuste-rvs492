@@ -3,8 +3,8 @@ import { loadAppData, requestedDate } from './app/data';
 import { escapeHtml, todayInHelsinki } from './app/format';
 import { parseRoute, ROUTES, type Route } from './app/router';
 import { buildTodayView } from './app/todayView';
-import { mountMap, renderMapShell } from './app/views/map';
-import { renderToday, simulationNote } from './app/views/today';
+import { renderAbout } from './app/views/about';
+import { bannerText, renderToday } from './app/views/today';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -17,8 +17,11 @@ app.innerHTML = `
 `;
 
 const view = document.querySelector<HTMLElement>('#view')!;
+const banner = document.querySelector<HTMLElement>('.sim-banner')!;
 /** Edellisen näkymän siivous (esim. Leaflet-kartan poisto). */
 let cleanup: (() => void) | null = null;
+/** Kasvaa jokaisella reitinvaihdolla; vanhentunut lataus ei piirrä uuden näkymän päälle. */
+let renderId = 0;
 
 async function render(route: Route): Promise<void> {
   for (const a of document.querySelectorAll<HTMLAnchorElement>('.tabs a')) {
@@ -26,20 +29,29 @@ async function render(route: Route): Promise<void> {
   }
   cleanup?.();
   cleanup = null;
+  const id = ++renderId;
+  const stale = (): boolean => id !== renderId;
   try {
     const data = await loadAppData();
+    if (stale()) return;
+    banner.textContent = bannerText(data.meta);
     const date = requestedDate(location.search, todayInHelsinki());
     if (route === 'tanaan') {
       view.innerHTML = renderToday(buildTodayView(data.alarm, data.weather, date), data.meta);
     } else if (route === 'kartta') {
+      // Leaflet ja Chart.js ladataan vasta tarvittaessa, jotta Tänään-näkymä aukeaa nopeasti puhelimella.
+      const { mountMap, renderMapShell } = await import('./app/views/map');
+      if (stale()) return;
       view.innerHTML = renderMapShell(data);
       const showGeo = new URLSearchParams(location.search).get('geo') === '1';
       cleanup = mountMap(view, data, date, showGeo);
+    } else if (route === 'ajankohdat') {
+      const { mountTiming, renderTimingShell } = await import('./app/views/timing');
+      if (stale()) return;
+      view.innerHTML = renderTimingShell();
+      cleanup = mountTiming(view, data);
     } else {
-      const label = ROUTES.find((r) => r.route === route)!.label;
-      view.innerHTML = `<section class="view"><header class="view-head"><h1>${label}</h1></header>
-        <article class="card"><p class="muted">Tämä näkymä on vielä rakenteilla.</p></article>
-        ${simulationNote(data.meta)}</section>`;
+      view.innerHTML = renderAbout(data);
     }
   } catch (err) {
     view.innerHTML = `<section class="view"><article class="card"><h2>Tietojen lataus epäonnistui</h2>

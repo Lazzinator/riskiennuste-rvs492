@@ -1,15 +1,18 @@
 // Datan lataus selaimessa. Kaikki tiedostot ovat staattisia JSON-tiedostoja hakemistossa
 // public/data/, joten sivu toimii ilman taustapalvelinta.
 
-import type { DatasetMeta, Grid, WeatherDay } from '../data/schema';
+import type { DatasetMeta, Grid, Incident, WeatherDay } from '../data/schema';
 import type { AlarmModel } from '../model/alarmModel';
 import type { SpatialModel } from '../model/spatialModel';
+import type { ValidationReport } from '../model/validation';
 
 export interface AppData {
   meta: DatasetMeta;
   alarm: AlarmModel;
   spatial: SpatialModel;
   grid: Grid;
+  incidents: Incident[];
+  validation: ValidationReport;
   /** Historia ja nykysää yhtenä aikajärjestyksessä olevana jonona */
   weather: WeatherDay[];
 }
@@ -24,15 +27,17 @@ let cache: Promise<AppData> | null = null;
 
 export function loadAppData(): Promise<AppData> {
   cache ??= (async () => {
-    const [meta, model, grid, history, current] = await Promise.all([
+    const [meta, model, grid, incidents, validation, history, current] = await Promise.all([
       loadJson<DatasetMeta>('meta.json'),
       loadJson<{ alarm: AlarmModel; spatial: SpatialModel }>('model.json'),
       loadJson<Grid>('grid.json'),
+      loadJson<Incident[]>('incidents.json'),
+      loadJson<ValidationReport>('validation.json'),
       loadJson<WeatherDay[]>('weather.json'),
       loadJson<WeatherDay[]>('weather-current.json'),
     ]);
     const weather = [...history, ...current.filter((w) => w.date > history[history.length - 1]!.date)];
-    return { meta, alarm: model.alarm, spatial: model.spatial, grid, weather };
+    return { meta, alarm: model.alarm, spatial: model.spatial, grid, incidents, validation, weather };
   })();
   return cache;
 }

@@ -13,8 +13,18 @@ const reasonList = (items: readonly ReasonView[], direction: 'up' | 'down' = 'up
 
 const hours = (start: number, end: number): string => `klo ${start}-${end}`;
 
+/** Yläpalkin teksti datan lähteen mukaan. */
+export function bannerText(meta: DatasetMeta): string {
+  return meta.source === 'simulated'
+    ? 'Pilotti: luvut perustuvat simuloituun dataan, eivät ole virallisia ennusteita.'
+    : 'Pilotti: ennusteet ovat suuntaa antavia, eivät virallisia.';
+}
+
 export function simulationNote(meta: DatasetMeta): string {
   const years = `${meta.startDate.slice(0, 4)}-${meta.endDate.slice(0, 4)}`;
+  if (meta.source !== 'simulated') {
+    return `<p class="footnote">Luvut perustuvat hälytystilastoihin (${esc(years)}) ja säätietoihin. Ne ovat suuntaa antavia eivätkä virallisia ennusteita.</p>`;
+  }
   return `<p class="footnote">Luvut perustuvat simuloituun dataan (${esc(years)}, siemen ${meta.seed ?? '-'}) ja simuloituun säähän. Ne eivät ole virallisia ennusteita.</p>`;
 }
 

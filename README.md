@@ -36,6 +36,8 @@ Rakenne:
 - `src/app/todayView.ts`: Tänään-näkymän luvut ja tekstit (puhdas funktio, testattava)
 - `src/app/views/today.ts`, `src/main.ts`, `src/style.css`: käyttöliittymä
 - `src/app/mapView.ts`, `src/app/views/map.ts`: riskikartta (Leaflet, OpenStreetMap-tausta, 1 km ruudut)
+- `src/app/timingView.ts`, `src/app/views/timing.ts`: Ajankohdat (viikonpäivä x tunti, kuukausijakauma, Chart.js)
+- `src/app/views/about.ts`: Tietoa pilotista, validointitulokset tiedostosta `validation.json`
 - `public/data/weather-current.json`: simuloitu "nykysää" 2026-2028, jatkaa historiaa katkeamatta.
   Oikeassa versiossa tilalle tulevat Ilmatieteen laitoksen havainnot ja ennuste.
 - `scripts/build-model.ts`: lukee vain `public/data/*.json`, joten toimii myöhemmin oikealla datalla
