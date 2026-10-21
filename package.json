@@ -1,0 +1,23 @@
+{
+  "name": "riskiennuste-rvs492",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Perttelin VPK:n (RVS492) hälytys- ja riskiennusteen pilotti simuloidulla datalla",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "generate-data": "tsx scripts/generate-data.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^3.2.7"
+  }
+}
