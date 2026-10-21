@@ -41,3 +41,28 @@ Rakenne:
 - `public/data/weather-current.json`: simuloitu "nykysää" 2026-2028, jatkaa historiaa katkeamatta.
   Oikeassa versiossa tilalle tulevat Ilmatieteen laitoksen havainnot ja ennuste.
 - `scripts/build-model.ts`: lukee vain `public/data/*.json`, joten toimii myöhemmin oikealla datalla
+
+## Julkaisu (GitHub Pages)
+
+Julkaisu tapahtuu automaattisesti GitHub Actionsilla (`.github/workflows/deploy.yml`), kun
+`main`-haaraan tulee muutoksia. Työnkulku ajaa tyyppitarkistuksen, testit ja buildin, ja sivu
+julkaistaan vain, jos kaikki menevät läpi. Julkaisun voi käynnistää myös käsin Actions-välilehdeltä.
+Pull requesteille ajetaan sama tarkistus ilman julkaisua (`.github/workflows/ci.yml`).
+
+Kertaluonteinen asetus: repositorion **Settings > Pages > Build and deployment > Source:
+GitHub Actions**. Sivu tulee osoitteeseen `https://<käyttäjä>.github.io/riskiennuste-rvs492/`.
+
+Sivu käyttää suhteellisia polkuja (`base: './'`) ja hash-reititystä (`#/kartta`), joten se toimii
+sekä GitHub Pagesin alipolussa että omalla domainilla ilman palvelinasetuksia.
+
+### Siirto omalle domainille (esim. perttelinvpk.fi)
+
+1. Lisää tiedosto `public/CNAME`, jonka sisältö on domain, esim. `riski.perttelinvpk.fi`.
+2. Lisää domainin DNS:ään CNAME-tietue, joka osoittaa osoitteeseen `<käyttäjä>.github.io`.
+3. Aseta sama domain kohtaan Settings > Pages > Custom domain ja ota käyttöön Enforce HTTPS.
+
+Vaihtoehtoisesti `dist/`-hakemiston sisällön voi kopioida mille tahansa staattiselle
+palvelimelle sellaisenaan, esim. alihakemistoon perttelinvpk.fi-sivustolla.
+
+Sivulla on `noindex`-merkintä, jottei simuloitua pilottia luulla hakukoneissa oikeaksi
+ennusteeksi. Poista se `index.html`-tiedostosta, kun käytössä on oikea data.

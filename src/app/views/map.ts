@@ -167,7 +167,8 @@ export function mountMap(root: HTMLElement, data: AppData, today: string, showGe
     const id = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cell]')?.dataset.cell;
     const rect = id ? rects.get(id) : undefined;
     if (!rect) return;
-    map.fitBounds(rect.getBounds(), { maxZoom: 13 });
+    // Ilman zoomausanimaatiota: muuten nopea välilehden vaihto kesken animaation kaataa Leafletin.
+    map.fitBounds(rect.getBounds(), { maxZoom: 13, animate: false });
     rect.openPopup();
     root.querySelector('#map')!.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -176,14 +177,16 @@ export function mountMap(root: HTMLElement, data: AppData, today: string, showGe
   const bounds = L.latLngBounds(
     data.grid.cells.flatMap((c) => [[c.south, c.west], [c.north, c.east]] as [number, number][]),
   );
-  // Säiliön lopullinen koko tiedetään vasta asettelun jälkeen.
-  map.fitBounds(bounds);
+  // Säiliön lopullinen koko tiedetään vasta asettelun jälkeen. Ilman animaatiota, koska kesken
+  // zoomausanimaation poistettu kartta (nopea välilehden vaihto) kaatuu Leafletissa.
+  map.fitBounds(bounds, { animate: false });
   const frame = requestAnimationFrame(() => {
-    map.invalidateSize();
-    map.fitBounds(bounds);
+    map.invalidateSize({ animate: false });
+    map.fitBounds(bounds, { animate: false });
   });
   return () => {
     cancelAnimationFrame(frame);
+    map.stop();
     map.remove();
   };
 }

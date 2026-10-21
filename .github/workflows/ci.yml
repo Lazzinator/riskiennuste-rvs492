@@ -1,0 +1,26 @@
+# Tarkistus pull requesteille: tyyppitarkistus, testit ja build. Ei julkaise mitään.
+name: Tarkistus
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tyyppitarkistus
+        run: npm run typecheck
+      - name: Testit
+        run: npm test
+      - name: Build
+        run: npm run build
