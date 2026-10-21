@@ -35,10 +35,13 @@ let lastResponseStart = '';
  * Sijainnin ilmaisutavat kokeilujärjestyksessä. Kaikki kyselyt eivät tue kaikkia, joten
  * käytetään ensimmäistä, jolla saadaan arvoja. bbox: pituus, leveys, pituus, leveys.
  */
+// Ensimmäinen GitHub-ajo (10/2026): piste ei palauttanut mitään, alue palautti vain lähimmän
+// aseman (ei lumensyvyyttä) ja tuuli löytyi vain paikannimellä. Laajempi alue tuo mukaan
+// myös lunta mittaavat asemat; lähimmän aseman arvoa käytetään joka suureelle erikseen.
 const LOCATIONS: Array<[string, Record<string, string | number>]> = [
-  ['piste', { latlon, maxlocations: 4 }],
-  ['alue', { bbox: '22.95,60.30,23.60,60.60' }],
-  ['paikka Salo', { place: 'Salo', maxlocations: 4 }],
+  ['alue', { bbox: '22.70,60.20,23.90,60.75' }],
+  ['piste', { latlon, maxlocations: 6 }],
+  ['paikka Salo', { place: 'Salo', maxlocations: 6 }],
 ];
 
 function summarize(values: readonly FmiValue[]): string {
@@ -163,7 +166,13 @@ async function main(): Promise<void> {
   const observations = dailyFromObservations(daily, wind, start, end);
   if (observations.length === 0) throw new Error(`havaintoja ei saatu (päiväarvot: ${summarize(daily)})`);
 
-  const forecastParams = { parameters: 'Temperature,Precipitation1h,WindSpeedMS', timestep: 60 };
+  // Ilman loppuaikaa ennuste kattaa vain noin kolme vuorokautta; viikkonäkymä tarvitsee seitsemän.
+  const forecastParams = {
+    parameters: 'Temperature,Precipitation1h,WindSpeedMS',
+    timestep: 60,
+    starttime: `${today}T00:00:00Z`,
+    endtime: `${addDays(today, 10)}T00:00:00Z`,
+  };
   const nonEmpty = async (run: Promise<FmiValue[]>): Promise<FmiValue[]> => {
     const values = await run;
     console.log(`  Ennuste: ${summarize(values)}`);
@@ -194,7 +203,10 @@ async function main(): Promise<void> {
     forecastUntil: forecast[forecast.length - 1]?.date ?? null,
   });
 
-  const missing = (p: string): number => daily.filter((v) => v.param === p && v.value === null).length;
+  // Puuttuvat päivät: ei arvoa miltään asemalta (lähimmän aseman puuttuva arvo korvataan toiselta).
+  const hasValue = (p: string): Set<string> =>
+    new Set(daily.filter((v) => v.param === p && v.value !== null).map((v) => v.time.slice(0, 10)));
+  const missing = (p: string): number => observations.length - hasValue(p).size;
   console.log(
     `Havaintopäiviä ${observations.length} (${observations[0]!.date}...${observations[observations.length - 1]!.date}), ennustepäiviä ${forecast.length}, kyselyjä ${requests}.`,
   );

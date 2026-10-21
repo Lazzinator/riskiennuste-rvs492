@@ -59,6 +59,12 @@ export interface FitOptions {
    * hälytykset ja simuloitu sää tuottaisivat harhaanjohtavia kertoimia.
    */
   useWeather: boolean;
+  /**
+   * Tehtävätyypit, joille sääselittäjät otetaan mukaan (oletus: kaikki). Valitaan
+   * ristiinvalidoinnilla (selectWeatherTypes), jottei sää heikennä niiden tyyppien ennustetta,
+   * joihin sillä ei datassa ole näyttöä.
+   */
+  weatherTypes?: readonly TaskType[];
 }
 
 // Valittu ristiinvalidoimalla 30 erillisellä 5 vuoden simulaatiolla (ei oletussiemenellä).
@@ -91,7 +97,7 @@ interface FactorGroup {
 
 
 const featureKeysFor = (type: TaskType, opt: FitOptions): readonly FeatureKey[] =>
-  opt.useWeather ? TYPE_FEATURES[type] : [];
+  opt.useWeather && (!opt.weatherTypes || opt.weatherTypes.includes(type)) ? TYPE_FEATURES[type] : [];
 
 function groupsFor(type: TaskType, opt: FitOptions): FactorGroup[] {
   // Kuukausi saa selittää kausivaihtelun vapaasti: RVS492:n datassa rakennuspalojen huippu on

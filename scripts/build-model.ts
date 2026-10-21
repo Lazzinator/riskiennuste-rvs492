@@ -15,7 +15,7 @@ import { validateDataset, type Dataset, type DatasetMeta, type WeatherDay, type 
 import { fitAlarmModel } from '../src/model/alarmModel';
 import { buildDayContexts } from '../src/model/features';
 import { fitSpatialModel, type SpatialModel } from '../src/model/spatialModel';
-import { validateModel } from '../src/model/validation';
+import { selectWeatherTypes, validateModel } from '../src/model/validation';
 
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
 const path = (name: string): string => join(dataDir, name);
@@ -53,7 +53,9 @@ const spatial: SpatialModel = spatialFile
 
 const useWeather = weatherSource === 'fmi' || meta.source === 'simulated';
 const days = buildDayContexts(weather).filter((d) => d.date >= meta.startDate && d.date <= meta.endDate);
-const alarm = fitAlarmModel(days, ds.incidents, { useWeather });
+// Sää otetaan mukaan vain tehtävätyypeille, joilla se paransi ennustetta ristiinvalidoinnissa.
+const selection = useWeather ? selectWeatherTypes(days, ds.incidents) : null;
+const alarm = fitAlarmModel(days, ds.incidents, { useWeather, weatherTypes: selection?.weatherTypes });
 
 // Pyöristys pitää tiedostot pieninä ja luettavina.
 const round = (_key: string, v: unknown): unknown => (typeof v === 'number' ? Number(v.toPrecision(5)) : v);
@@ -75,4 +77,11 @@ console.log(
     `(parannus ${pct(1 - report.dailyDeviance.model / report.dailyDeviance.baseline)}).`,
 );
 console.log(`Kuukausimäärien virhe (MAE): malli ${report.monthlyMae.model.toFixed(2)}, keskiarvo ${report.monthlyMae.baseline.toFixed(2)}.`);
+if (selection) {
+  console.log(`Sään valinta (${selection.folds} vuotta vuorollaan testinä, log-uskottavuus keskiarvo / ilman säätä / säällä):`);
+  for (const [t, v] of Object.entries(selection.byType)) {
+    const mark = selection.weatherTypes.includes(t as never) ? 'sää käytössä' : '-';
+    console.log(`  ${t.padEnd(20)} ${v.mean.toFixed(1)} / ${v.noWeather.toFixed(1)} / ${v.withWeather.toFixed(1)}  ${mark}`);
+  }
+}
 console.log(`Riskikartta: log-pistemäärä vs. tasajakauma ${report.spatialLogScoreVsUniform?.toFixed(2) ?? '-'} (positiivinen = parempi).`);

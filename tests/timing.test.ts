@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AppData } from '../src/app/data';
 import { buildTimingView, weeklyHeat } from '../src/app/timingView';
-import { busyMonths, renderAbout } from '../src/app/views/about';
+import { busyMonths, renderAbout, weatherUseText } from '../src/app/views/about';
 import { bannerText, simulationNote } from '../src/app/views/today';
 import { TASK_TYPES, type DatasetMeta } from '../src/data/schema';
 import { buildDayContexts } from '../src/model/features';
@@ -89,6 +89,13 @@ describe('Tietoa-sivu', () => {
     const withWeather = renderAbout({ ...real, meta: { ...real.meta, weatherSource: 'fmi' } });
     expect(withWeather).toContain('Ilmatieteen laitoksen avoimesta datasta');
     expect(withWeather).toContain('Maastopaloriski 1-5');
+  });
+
+  it('kertoo, mihin tyyppeihin sää vaikuttaa', () => {
+    const text = weatherUseText(alarm);
+    expect(text).toMatch(/maastopalo \(lumipeite, kuivuus/);
+    const none = { ...alarm, types: Object.fromEntries(TASK_TYPES.map((t) => [t, { ...alarm.types[t], features: {} }])) } as typeof alarm;
+    expect(weatherUseText(none)).toContain('ei käytä niitä');
   });
 
   it('nimeää kausihuiput kuukausikertoimista', () => {

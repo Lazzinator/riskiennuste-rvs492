@@ -3,7 +3,7 @@
 
 import { TASK_TYPES, type Dataset, type Grid, type Incident, type TaskType } from '../data/schema';
 import { fitAlarmModel, dailyCounts, expectedByType, predictDay, type AlarmModel, type RiskLevel } from './alarmModel';
-import { buildDayContexts, type DayContext } from './features';
+import { buildDayContexts, TYPE_FEATURES, type DayContext } from './features';
 import { fitSpatialModel } from './spatialModel';
 import { wildfireRisk, type WildfireLevel } from './wildfire';
 
@@ -40,6 +40,8 @@ export interface ValidationReport {
   spatialLogScoreVsUniform: number | null;
   /** Onko malli opetettu sääselittäjien kanssa. */
   usesWeather: boolean;
+  /** Sääselittäjien valinta tehtävätyypeittäin (vain kun sää on käytössä). */
+  weatherSelection: WeatherSelection | null;
   /**
    * Maastopaloindeksi koko aineistossa (indeksiä ei sovitettu datan perusteella).
    * Tyhjä, jos oikeaa säädataa ei ole.
@@ -58,6 +60,48 @@ const poissonLogLik = (y: number, lambda: number): number =>
 
 const poissonDeviance = (y: number, lambda: number): number =>
   2 * ((y > 0 ? y * Math.log(y / Math.max(lambda, 1e-12)) : 0) - (y - lambda));
+
+export interface WeatherSelection {
+  /** Log-uskottavuus vuosittaisessa ristiinvalidoinnissa: keskiarvo, malli ilman säätä, malli säällä */
+  byType: Record<TaskType, { mean: number; noWeather: number; withWeather: number }>;
+  /** Tyypit, joilla sää paransi ennustetta */
+  weatherTypes: TaskType[];
+  folds: number;
+}
+
+/**
+ * Valitsee tehtävätyypit, joille sää otetaan mukaan: kukin vuosi vuorollaan testijoukkona,
+ * ja sää valitaan, jos se parantaa testivuosien yhteenlaskettua log-uskottavuutta verrattuna
+ * samaan malliin ilman säätä. Näin sää ei heikennä ennustetta tyypeillä, joihin sillä ei ole
+ * datassa vaikutusta.
+ */
+export function selectWeatherTypes(days: readonly DayContext[], incidents: readonly Incident[]): WeatherSelection {
+  const years = [...new Set(days.map((d) => d.date.slice(0, 4)))];
+  const byType = Object.fromEntries(TASK_TYPES.map((t) => [t, { mean: 0, noWeather: 0, withWeather: 0 }])) as WeatherSelection['byType'];
+  let folds = 0;
+  for (const y of years) {
+    const train = days.filter((d) => !d.date.startsWith(y));
+    const test = days.filter((d) => d.date.startsWith(y));
+    if (train.length < 365 || test.length < 90) continue;
+    folds++;
+    const trainInc = incidents.filter((i) => !i.time.startsWith(y));
+    const m0 = fitAlarmModel(train, trainInc, { useWeather: false, iterations: 30 });
+    const m1 = fitAlarmModel(train, trainInc, { useWeather: true, iterations: 30 });
+    const counts = dailyCounts(test, incidents.filter((i) => i.time.startsWith(y)));
+    test.forEach((c, i) => {
+      const e0 = expectedByType(m0, c);
+      const e1 = expectedByType(m1, c);
+      for (const t of TASK_TYPES) {
+        const n = counts[t][i]!;
+        byType[t].mean += poissonLogLik(n, m0.types[t].trainCount / train.length);
+        byType[t].noWeather += poissonLogLik(n, e0[t]);
+        byType[t].withWeather += poissonLogLik(n, e1[t]);
+      }
+    });
+  }
+  const weatherTypes = TASK_TYPES.filter((t) => TYPE_FEATURES[t].length > 0 && byType[t].withWeather > byType[t].noWeather);
+  return { byType, weatherTypes, folds };
+}
 
 /** Testijakson ensimmäinen päivä: viimeiset 365 päivää päättyen annettuun päivään. */
 export function testStartFor(lastDate: string): string {
@@ -109,7 +153,9 @@ export function validateModel(ds: Dataset, options: { useWeather?: boolean } = {
   const trainInc = ds.incidents.filter((i) => i.time.slice(0, 10) < testStart);
   const testInc = ds.incidents.filter((i) => i.time.slice(0, 10) >= testStart && i.time.slice(0, 10) <= testEnd);
 
-  const model: AlarmModel = fitAlarmModel(train, trainInc, { useWeather });
+  // Sään valinta tehdään vain opetusjaksolla, jottei testijakso vaikuta malliin.
+  const weatherSelection = useWeather ? selectWeatherTypes(train, trainInc) : null;
+  const model: AlarmModel = fitAlarmModel(train, trainInc, { useWeather, weatherTypes: weatherSelection?.weatherTypes });
   const baselineRate = Object.fromEntries(
     TASK_TYPES.map((t) => [t, model.types[t].trainCount / train.length]),
   ) as Record<TaskType, number>;
@@ -190,6 +236,7 @@ export function validateModel(ds: Dataset, options: { useWeather?: boolean } = {
     }),
     spatialLogScoreVsUniform: spatialValidation(ds.grid, ds.incidents, testStart),
     usesWeather: useWeather,
+    weatherSelection,
     // Indeksi lasketaan säästä, joten vertailu oikeisiin paloihin vaatii oikean säädatan.
     wildfire: useWeather
       ? [...wf].map(([level, s]) => ({

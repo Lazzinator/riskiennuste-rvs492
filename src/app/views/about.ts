@@ -1,8 +1,8 @@
 // Tietoa pilotista: data, miten malli toimii, kuinka hyvä se on, tietosuoja ja säädata.
 
 import { TASK_TYPES, TASK_TYPE_LABELS, type TaskType } from '../../data/schema';
-import type { AlarmModel } from '../../model/alarmModel';
-import { MONTH_NAMES } from '../../model/features';
+import { featureKeysOf, type AlarmModel } from '../../model/alarmModel';
+import { FEATURES, MONTH_NAMES, TYPE_FEATURES } from '../../model/features';
 import type { ValidationReport } from '../../model/validation';
 import { WILDFIRE_LEVEL_LABELS } from '../../model/wildfire';
 import type { AppData } from '../data';
@@ -150,11 +150,29 @@ function privacySection(data: AppData): string {
     </article>`;
 }
 
+/** Mihin tehtävätyyppeihin malli käyttää säätä ja millä selittäjillä. */
+export function weatherUseText(model: AlarmModel): string {
+  const used = TASK_TYPES.filter((t) => featureKeysOf(model.types[t]).length > 0);
+  if (used.length === 0) {
+    return 'säätiedot ovat käytössä, mutta yhdenkään tehtävätyypin ennuste ei parantunut niillä, joten malli ei käytä niitä.';
+  }
+  const parts = used.map(
+    (t) => `${TASK_TYPE_LABELS[t].toLowerCase()} (${featureKeysOf(model.types[t]).map((k) => FEATURES[k].name.toLowerCase()).join(', ')})`,
+  );
+  const unused = TASK_TYPES.filter((t) => !used.includes(t) && TYPE_FEATURES[t].length > 0);
+  return (
+    `malli käyttää säätä tehtävätyypeille ${parts.join('; ')}. ` +
+    (unused.length
+      ? `Muilla tyypeillä (${unused.map((t) => TASK_TYPE_LABELS[t].toLowerCase()).join(', ')}) sää ei parantanut ennustetta, kun kukin vuosi testattiin vuorollaan, joten sitä ei käytetä.`
+      : '')
+  );
+}
+
 export function renderAbout(data: AppData): string {
   const m = data.meta;
   const weatherOn = showWeather(m);
   const features = weatherOn
-    ? `<li><strong>Sää:</strong> liikenneonnettomuuksiin vaikuttavat liukkaus ja lumisade, rakennuspaloihin lämmitystarve ja jyrkästi kylmenevä sää (myös nokipalot hälytetään rakennuspaloina), tarkastustehtäviin lämmitystarve, maastopaloihin kuivuus, lämpö, tuuli ja lumipeite, vahingontorjuntaan myrsky ja rankkasade.</li>
+    ? `<li><strong>Sää:</strong> ${esc(weatherUseText(data.alarm))}</li>
         <li><strong>Vaikutuksen suunta on lukittu,</strong> kun se tiedetään varmasti: esimerkiksi kylmempi sää ei voi vähentää lämmityksestä johtuvia paloja eikä liukkaus liikenneonnettomuuksia. Malli päättää datasta vain, kuinka suuri vaikutus on.</li>`
     : '<li><strong>Sää:</strong> ei vielä käytössä (ks. Säätiedot). Malli tuntee nyt vuodenajan, viikonpäivän ja kellonajan.</li>';
   return `

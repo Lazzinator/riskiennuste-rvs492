@@ -12,7 +12,7 @@ import {
 } from '../src/model/alarmModel';
 import { buildDayContexts, FEATURES, type DayContext } from '../src/model/features';
 import { cellExpected, fitSpatialModel } from '../src/model/spatialModel';
-import { splitLastYear, testStartFor, validateModel } from '../src/model/validation';
+import { selectWeatherTypes, splitLastYear, testStartFor, validateModel } from '../src/model/validation';
 import { wildfireRisk } from '../src/model/wildfire';
 
 const ds = generateDataset();
@@ -266,6 +266,31 @@ describe('riskikartan malli', () => {
   });
 });
 
+describe('sään valinta ristiinvalidoinnilla', () => {
+  it('valitsee sään tyypeille, joihin se vaikuttaa', () => {
+    const sel = selectWeatherTypes(days, ds.incidents);
+    expect(sel.folds).toBe(5);
+    expect(sel.weatherTypes).toContain('maastopalo');
+    expect(sel.weatherTypes).toContain('liikenneonnettomuus');
+    // Tyypit ilman sääselittäjiä eivät voi tulla valituiksi.
+    expect(sel.weatherTypes).not.toContain('muu');
+    for (const t of sel.weatherTypes) expect(sel.byType[t].withWeather).toBeGreaterThan(sel.byType[t].noWeather);
+  });
+
+  it('hylkää sään, kun sää ei liity hälytyksiin', () => {
+    // Sekoitetaan sää: päivien sää ei enää vastaa niiden hälytyksiä.
+    const shuffled = days.map((d, i) => ({ ...d, weather: days[(i * 7919) % days.length]!.weather, dryDays: days[(i * 7919) % days.length]!.dryDays }));
+    const sel = selectWeatherTypes(shuffled, ds.incidents);
+    expect(sel.weatherTypes.length).toBeLessThanOrEqual(2);
+  });
+
+  it('malli käyttää säätä vain valituille tyypeille', () => {
+    const m = fitAlarmModel(days, ds.incidents, { weatherTypes: ['maastopalo'] });
+    expect(Object.keys(m.types.maastopalo.features).length).toBeGreaterThan(0);
+    expect(Object.keys(m.types.liikenneonnettomuus.features)).toEqual([]);
+  });
+});
+
 describe('validointi', () => {
   it('jakaa viimeiset 365 päivää testijoukoksi', () => {
     const { train, test, testStart } = splitLastYear(days);
@@ -296,5 +321,5 @@ describe('validointi', () => {
     }
     expect(gain / n).toBeGreaterThan(0);
     expect(wins).toBeGreaterThanOrEqual(Math.ceil(0.75 * n));
-  });
+  }, 60_000);
 });
