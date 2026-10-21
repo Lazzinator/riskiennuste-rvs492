@@ -4,7 +4,7 @@ import { escapeHtml, todayInHelsinki } from './app/format';
 import { parseRoute, ROUTES, type Route } from './app/router';
 import { buildTodayView } from './app/todayView';
 import { renderAbout } from './app/views/about';
-import { bannerText, renderToday } from './app/views/today';
+import { bannerText, renderToday, showWeather } from './app/views/today';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -37,14 +37,13 @@ async function render(route: Route): Promise<void> {
     banner.textContent = bannerText(data.meta);
     const date = requestedDate(location.search, todayInHelsinki());
     if (route === 'tanaan') {
-      view.innerHTML = renderToday(buildTodayView(data.alarm, data.weather, date), data.meta);
+      view.innerHTML = renderToday(buildTodayView(data.alarm, data.weather, date, showWeather(data.meta)), data.meta);
     } else if (route === 'kartta') {
       // Leaflet ja Chart.js ladataan vasta tarvittaessa, jotta Tänään-näkymä aukeaa nopeasti puhelimella.
       const { mountMap, renderMapShell } = await import('./app/views/map');
       if (stale()) return;
       view.innerHTML = renderMapShell(data);
-      const showGeo = new URLSearchParams(location.search).get('geo') === '1';
-      cleanup = mountMap(view, data, date, showGeo);
+      cleanup = mountMap(view, data, date);
     } else if (route === 'ajankohdat') {
       const { mountTiming, renderTimingShell } = await import('./app/views/timing');
       if (stale()) return;

@@ -1,4 +1,6 @@
-// Tuottaa simuloidun datan hakemistoon public/data/.
+// Tuottaa simuloidun datan hakemistoon data-sim/ (ei versionhallinnassa). Sovellus käyttää
+// PRONTOsta tuotua dataa (public/data/); simulaattoria käytetään testeissä ja mallin
+// tarkistamisessa. Simuloidun version saa sovellukseen kopioimalla data-sim/ -> public/data/.
 // Käyttö: npm run generate-data [-- --seed 492]
 
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -19,7 +21,7 @@ if (errors.length > 0) {
   process.exit(1);
 }
 
-const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'data');
+const outDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'data-sim');
 mkdirSync(outDir, { recursive: true });
 const write = (name: string, data: unknown): void =>
   writeFileSync(join(outDir, name), JSON.stringify(data) + '\n');

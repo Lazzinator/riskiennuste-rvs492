@@ -1,4 +1,5 @@
-# Tarkistus pull requesteille: tyyppitarkistus, testit ja build. Ei julkaise mitään.
+# Tarkistus pull requesteille: sama säähaku ja mallin opetus kuin julkaisussa, tyyppitarkistus,
+# testit ja build. Ei julkaise mitään.
 name: Tarkistus
 
 on:
@@ -20,7 +21,19 @@ jobs:
       - run: npm ci
       - name: Tyyppitarkistus
         run: npm run typecheck
-      - name: Testit
+      - name: Testit (repositorion data)
+        run: npm test
+      - name: Säätiedot (Ilmatieteen laitos)
+        id: weather
+        continue-on-error: true
+        run: npm run fetch-weather
+      - name: Mallin opetus
+        run: npm run build-model
+      - name: Testit (haetulla säällä)
         run: npm test
       - name: Build
         run: npm run build
+      - name: Yhteenveto
+        if: always()
+        run: |
+          echo "Säähaku: ${{ steps.weather.outcome }}" >> "$GITHUB_STEP_SUMMARY"

@@ -66,8 +66,8 @@ describe('ruudukko', () => {
     );
     const northernmost = scored.reduce((a, b) => (a.c.centerLat > b.c.centerLat ? a : b));
     expect(nearInkere.f.settlement).toBeGreaterThan(0.8);
-    expect(spatialWeight('automaattinen_paloilmoitus', nearInkere.f)).toBeGreaterThan(
-      10 * spatialWeight('automaattinen_paloilmoitus', northernmost.f),
+    expect(spatialWeight('tarkastustehtava', nearInkere.f)).toBeGreaterThan(
+      10 * spatialWeight('tarkastustehtava', northernmost.f),
     );
 
     const roadCells = scored.filter((s) => s.f.majorRoad > 0.5);

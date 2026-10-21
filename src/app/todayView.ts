@@ -27,7 +27,8 @@ export interface DayRow {
   label: string;
   level: RiskLevel;
   probAtLeastOne: number;
-  wildfireLevel: WildfireLevel;
+  /** null, kun oikeaa säätä ei ole */
+  wildfireLevel: WildfireLevel | null;
   weather: string;
 }
 
@@ -37,7 +38,10 @@ export interface TodayView {
   dateLabel: string;
   /** Pyydetty päivä, jos simuloitua säätä ei ollut ja käytettiin vastaavaa päivää */
   substitutedFor: string | null;
-  weather: string;
+  /** null, kun oikeaa säätä ei ole */
+  weather: string | null;
+  /** Onko päivän sää ennuste (true) vai havainto (false) */
+  weatherIsForecast: boolean;
   level: RiskLevel;
   levelText: string;
   ratio: number;
@@ -47,7 +51,8 @@ export interface TodayView {
   dampeners: ReasonView[];
   peak: { startHour: number; endHour: number; share: number; partOfDay: string };
   topTypes: Array<{ taskType: TaskType; label: string; share: number }>;
-  wildfire: { level: WildfireLevel; label: string; reasons: string[] };
+  /** null, kun oikeaa säätä ei ole: indeksi lasketaan säästä */
+  wildfire: { level: WildfireLevel; label: string; reasons: string[] } | null;
   week: { total: number; ratio: number; probAtLeastOne: number; level: RiskLevel; days: DayRow[] };
 }
 
@@ -104,7 +109,17 @@ export function resolveDate(available: ReadonlySet<string>, requested: string, f
   return after ? last : first;
 }
 
-export function buildTodayView(model: AlarmModel, weather: readonly WeatherDay[], requested: string): TodayView {
+/**
+ * showWeather = false: säädataa ei ole (esim. oikea hälytysdata ilman Ilmatieteen laitoksen
+ * säätä). Ennuste perustuu silloin vuodenaikaan ja viikonpäivään, eikä säätä tai
+ * maastopaloindeksiä näytetä; säätaulukkoa käytetään vain päivien järjestämiseen.
+ */
+export function buildTodayView(
+  model: AlarmModel,
+  weather: readonly WeatherDay[],
+  requested: string,
+  showWeather = true,
+): TodayView {
   const contexts = buildDayContexts(weather);
   const dates = new Set(weather.map((w) => w.date));
   const date = resolveDate(dates, requested, weather[0]!.date, weather[weather.length - 1]!.date);
@@ -125,7 +140,8 @@ export function buildTodayView(model: AlarmModel, weather: readonly WeatherDay[]
     date,
     dateLabel: fmtDate(date, ctx.weekday),
     substitutedFor: date === requested ? null : requested,
-    weather: weatherSummary(ctx.weather),
+    weather: showWeather ? weatherSummary(ctx.weather) : null,
+    weatherIsForecast: ctx.weather.forecast === true,
     level: day.level,
     levelText: LEVEL_TEXT[day.level],
     ratio: day.ratio,
@@ -135,7 +151,7 @@ export function buildTodayView(model: AlarmModel, weather: readonly WeatherDay[]
     dampeners: day.dampeners.slice(0, MAX_DAMPENERS).map(reasonView),
     peak: { ...peak, partOfDay: partOfDay(peak.startHour + 2) },
     topTypes,
-    wildfire: { level: wf.level, label: WILDFIRE_LEVEL_LABELS[wf.level], reasons: wf.reasons },
+    wildfire: showWeather ? { level: wf.level, label: WILDFIRE_LEVEL_LABELS[wf.level], reasons: wf.reasons } : null,
     week: {
       total: week.total,
       ratio: week.ratio,
@@ -148,8 +164,8 @@ export function buildTodayView(model: AlarmModel, weather: readonly WeatherDay[]
           label: fmtDate(d.date, c.weekday),
           level: d.level,
           probAtLeastOne: 1 - Math.exp(-d.total),
-          wildfireLevel: wildfireRisk(c).level,
-          weather: shortWeather(c.weather),
+          wildfireLevel: showWeather ? wildfireRisk(c).level : null,
+          weather: showWeather ? shortWeather(c.weather) : '',
         };
       }),
     },

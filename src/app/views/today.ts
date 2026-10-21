@@ -20,17 +20,24 @@ export function bannerText(meta: DatasetMeta): string {
     : 'Pilotti: ennusteet ovat suuntaa antavia, eivät virallisia.';
 }
 
+/** Näytetäänkö sää: oikea sää Ilmatieteen laitokselta tai kokonaan simuloitu aineisto. */
+export const showWeather = (meta: DatasetMeta): boolean => meta.weatherSource === 'fmi' || meta.source === 'simulated';
+
 export function simulationNote(meta: DatasetMeta): string {
   const years = `${meta.startDate.slice(0, 4)}-${meta.endDate.slice(0, 4)}`;
-  if (meta.source !== 'simulated') {
-    return `<p class="footnote">Luvut perustuvat hälytystilastoihin (${esc(years)}) ja säätietoihin. Ne ovat suuntaa antavia eivätkä virallisia ennusteita.</p>`;
+  if (meta.source === 'simulated') {
+    return `<p class="footnote">Luvut perustuvat simuloituun dataan (${esc(years)}, siemen ${meta.seed ?? '-'}) ja simuloituun säähän. Ne eivät ole virallisia ennusteita.</p>`;
   }
-  return `<p class="footnote">Luvut perustuvat simuloituun dataan (${esc(years)}, siemen ${meta.seed ?? '-'}) ja simuloituun säähän. Ne eivät ole virallisia ennusteita.</p>`;
+  const weather =
+    meta.weatherSource === 'fmi'
+      ? 'Säätiedot: Ilmatieteen laitos, avoin data (CC BY 4.0).'
+      : 'Säätietoja ei ole käytössä, joten ennuste perustuu vuodenaikaan ja viikonpäivään.';
+  return `<p class="footnote">Luvut perustuvat RVS492:n hälytyksiin PRONTOssa (${esc(years)}). ${weather} Ennusteet ovat suuntaa antavia eivätkä virallisia.</p>`;
 }
 
 export function renderToday(v: TodayView, meta: DatasetMeta): string {
   const substituted = v.substitutedFor
-    ? `<p class="notice">Päivälle ${esc(v.substitutedFor)} ei ole simuloitua säätä. Näytetään vastaava päivä ${esc(v.date)}.</p>`
+    ? `<p class="notice">Päivälle ${esc(v.substitutedFor)} ei ole säätietoja. Näytetään vastaava päivä ${esc(v.date)}.</p>`
     : '';
 
   // Nostavat ja laskevat tekijät erikseen: liukas keli voi nostaa riskiä, vaikka
@@ -48,7 +55,7 @@ export function renderToday(v: TodayView, meta: DatasetMeta): string {
         <span class="week-day">${esc(d.label)}<small>${esc(d.weather)}</small></span>
         <span class="badge level-${d.level}" title="${esc(LEVEL_TEXT[d.level])}">${esc(d.level)}</span>
         <span class="week-prob">${fmtPercent(d.probAtLeastOne)}</span>
-        <span class="wf-chip wf-${d.wildfireLevel}" title="Maastopaloriski ${d.wildfireLevel}/5">${d.wildfireLevel}</span>
+        ${d.wildfireLevel === null ? '' : `<span class="wf-chip wf-${d.wildfireLevel}" title="Maastopaloriski ${d.wildfireLevel}/5">${d.wildfireLevel}</span>`}
       </li>`,
     )
     .join('');
@@ -58,7 +65,11 @@ export function renderToday(v: TodayView, meta: DatasetMeta): string {
     <header class="view-head">
       <p class="eyebrow">Tänään</p>
       <h1>${esc(v.dateLabel)}</h1>
-      <p class="muted">${esc(v.weather)}</p>
+      <p class="muted">${
+        v.weather === null
+          ? 'Säätietoja ei ole käytössä: ennuste perustuu vuodenaikaan ja viikonpäivään.'
+          : `${v.weatherIsForecast ? 'Sääennuste' : 'Sää'}: ${esc(v.weather)}`
+      }</p>
     </header>
     ${substituted}
 
@@ -86,17 +97,21 @@ export function renderToday(v: TodayView, meta: DatasetMeta): string {
       </article>
     </div>
 
-    <article class="card wildfire wf-${v.wildfire.level}">
+    ${
+      v.wildfire === null
+        ? ''
+        : `<article class="card wildfire wf-${v.wildfire.level}">
       <h2>Maastopaloriski</h2>
       <p class="big">${v.wildfire.level}<span class="of">/5</span></p>
       <p class="big-label">${esc(v.wildfire.label)}</p>
       <ul class="plain">${v.wildfire.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
-    </article>
+    </article>`
+    }
 
     <article class="card">
       <h2>Seuraavat 7 päivää</h2>
       <p>Vähintään yksi hälytys: <strong>${fmtPercent(v.week.probAtLeastOne)}</strong>. Odotettu määrä ${fmtNum(v.week.total, 1)} hälytystä, ${esc(fmtRatio(v.week.ratio))}.</p>
-      <div class="week-head"><span>Päivä</span><span>Riski</span><span>Hälytys</span><span>Maasto</span></div>
+      <div class="week-head"><span>Päivä</span><span>Riski</span><span>Hälytys</span><span>${v.wildfire === null ? '' : 'Maasto'}</span></div>
       <ul class="week">${week}</ul>
     </article>
 

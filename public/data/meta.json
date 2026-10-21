@@ -1,1 +1,1 @@
-{"source":"simulated","seed":492,"startDate":"2021-01-01","endDate":"2025-12-31","incidentCount":276,"schemaVersion":1,"note":"Simuloitu data. Ei perustu todellisiin hälytyksiin eikä ole virallinen ennuste."}
+{"source":"pronto","weatherSource":"simulated","seed":null,"startDate":"2021-01-01","endDate":"2026-09-13","incidentCount":319,"schemaVersion":1,"note":"RVS492:n hälytykset PRONTOsta. Julkaistu ilman sijainteja; riskikartta on tasoitettu tiheys."}

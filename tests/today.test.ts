@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { requestedDate } from '../src/app/data';
 import { fmtDate, fmtEffect, fmtNum, fmtPercent, fmtRatio, todayInHelsinki } from '../src/app/format';
@@ -6,12 +5,9 @@ import { parseRoute } from '../src/app/router';
 import { buildTodayView, resolveDate, weatherSummary } from '../src/app/todayView';
 import { renderToday } from '../src/app/views/today';
 import type { DatasetMeta, WeatherDay } from '../src/data/schema';
-import type { AlarmModel } from '../src/model/alarmModel';
+import { simulated } from './fixtures';
 
-const read = <T>(f: string): T => JSON.parse(readFileSync(`public/data/${f}`, 'utf8')) as T;
-const meta = read<DatasetMeta>('meta.json');
-const alarm = read<{ alarm: AlarmModel }>('model.json').alarm;
-const weather = [...read<WeatherDay[]>('weather.json'), ...read<WeatherDay[]>('weather-current.json')];
+const { meta, alarm, weather } = simulated;
 
 describe('muotoilu', () => {
   it('käyttää suomalaista desimaalipilkkua', () => {
@@ -106,7 +102,26 @@ describe('Tänään-näkymä', () => {
 
   it('maastopaloriski on 1 lumipeitteellä', () => {
     const day = weather.find((w) => w.date >= '2026-01-01' && w.snowDepthCm > 10)!;
-    expect(buildTodayView(alarm, weather, day.date).wildfire.level).toBe(1);
+    expect(buildTodayView(alarm, weather, day.date).wildfire!.level).toBe(1);
+  });
+
+  it('ilman oikeaa säätä ei näytetä säätä eikä maastopaloindeksiä', () => {
+    const v = buildTodayView(alarm, weather, '2026-10-21', false);
+    expect(v.weather).toBeNull();
+    expect(v.wildfire).toBeNull();
+    expect(v.week.days.every((d) => d.wildfireLevel === null && d.weather === '')).toBe(true);
+    const real: DatasetMeta = { ...meta, source: 'pronto', weatherSource: 'simulated', seed: null };
+    const html = renderToday(v, real);
+    expect(html).toContain('Säätietoja ei ole käytössä');
+    expect(html).not.toContain('Maastopaloriski');
+    expect(html).not.toContain('wf-chip');
+  });
+
+  it('ennustepäivän sää merkitään ennusteeksi', () => {
+    const forecastWeather = weather.map((w) => (w.date >= '2026-10-21' ? { ...w, forecast: true } : w));
+    const html = renderToday(buildTodayView(alarm, forecastWeather, '2026-10-21'), meta);
+    expect(html).toContain('Sääennuste:');
+    expect(renderToday(buildTodayView(alarm, weather, '2026-10-21'), meta)).toContain('Sää:');
   });
 
   it('kertoo, jos päivä on korvattu', () => {

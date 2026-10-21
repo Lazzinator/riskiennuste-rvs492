@@ -1,20 +1,13 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AppData } from '../src/app/data';
 import { buildTimingView, weeklyHeat } from '../src/app/timingView';
-import { renderAbout } from '../src/app/views/about';
+import { busyMonths, renderAbout, weatherUseText } from '../src/app/views/about';
 import { bannerText, simulationNote } from '../src/app/views/today';
-import { TASK_TYPES, type DatasetMeta, type Grid, type Incident, type WeatherDay } from '../src/data/schema';
-import type { AlarmModel } from '../src/model/alarmModel';
+import { TASK_TYPES, type DatasetMeta } from '../src/data/schema';
 import { buildDayContexts } from '../src/model/features';
-import type { SpatialModel } from '../src/model/spatialModel';
-import type { ValidationReport } from '../src/model/validation';
+import { simulated } from './fixtures';
 
-const read = <T>(f: string): T => JSON.parse(readFileSync(`public/data/${f}`, 'utf8')) as T;
-const meta = read<DatasetMeta>('meta.json');
-const { alarm, spatial } = read<{ alarm: AlarmModel; spatial: SpatialModel }>('model.json');
-const incidents = read<Incident[]>('incidents.json');
-const weather = read<WeatherDay[]>('weather.json');
+const { meta, alarm, incidents, weather } = simulated;
 const days = buildDayContexts(weather).filter((d) => d.date >= alarm.trainStart && d.date <= alarm.trainEnd);
 const years = alarm.trainDays / 365.25;
 
@@ -29,9 +22,10 @@ describe('viikonpäivä x tunti', () => {
     expect(heat.every((row) => row.length === 24)).toBe(true);
   });
 
-  it('yöllä on hiljaista ja iltapäivällä tai illalla kiireisintä', () => {
+  it('yöllä on hiljaista ja päivällä tai illalla kiireisintä', () => {
     const v = buildTimingView(alarm, incidents, days, 'kaikki');
-    expect(v.busiest.startHour).toBeGreaterThanOrEqual(12);
+    expect(v.busiest.startHour).toBeGreaterThanOrEqual(8);
+    expect(v.busiest.endHour).toBeLessThanOrEqual(22);
     expect(v.quietest.startHour).toBeLessThanOrEqual(4);
     expect(v.busiest.ratio).toBeGreaterThan(1.3);
     expect(v.quietest.ratio).toBeLessThan(0.6);
@@ -70,35 +64,61 @@ describe('kuukausijakauma', () => {
 });
 
 describe('Tietoa-sivu', () => {
-  const data: AppData = {
-    meta,
-    alarm,
-    spatial,
-    grid: read<Grid>('grid.json'),
-    incidents,
-    validation: read<ValidationReport>('validation.json'),
-    weather,
-  };
-
-  it('kertoo simuloinnista, validoinnista ja oikean datan kytkemisestä', () => {
-    const html = renderAbout(data);
+  it('simuloidulla datalla kertoo simuloinnista ja validoinnista', () => {
+    const html = renderAbout(simulated);
     expect(html).toContain('Kaikki luvut perustuvat simuloituun dataan');
     expect(html).toContain('Kuinka hyvä malli on');
-    expect(html).toContain(String(data.validation.testIncidents));
-    expect(html).toContain('Miten oikea data kytketään');
-    expect(html).toContain('nokipalo');
+    expect(html).toContain(String(simulated.validation.testIncidents));
+    expect(html).toContain('Maastopaloriski 1-5');
     expect(html).not.toContain('—');
     expect(html).not.toContain('undefined');
     expect(html).not.toContain('NaN');
     expect(html).not.toMatch(/-\d+ %/);
   });
 
-  it('huomautukset vaihtuvat datan lähteen mukaan', () => {
+  it('oikealla datalla ilman säätä kertoo datan, tietosuojan ja sään tilan', () => {
+    const real: AppData = { ...simulated, meta: { ...meta, source: 'pronto', weatherSource: 'simulated', seed: null } };
+    const html = renderAbout(real);
+    expect(html).not.toContain('simuloituun dataan');
+    expect(html).toContain('PRONTO');
+    expect(html).toContain('Tietosuoja');
+    expect(html).toContain('Ei vielä käytössä');
+    // Maastopaloindeksiä ei esitetä ilman oikeaa säätä.
+    expect(html).not.toContain('Maastopaloriski 1-5');
+    expect(html).not.toMatch(/-\d+ %/);
+    const withWeather = renderAbout({ ...real, meta: { ...real.meta, weatherSource: 'fmi' } });
+    expect(withWeather).toContain('Ilmatieteen laitoksen avoimesta datasta');
+    expect(withWeather).toContain('Maastopaloriski 1-5');
+  });
+
+  it('kertoo, mihin tyyppeihin sää vaikuttaa', () => {
+    const text = weatherUseText(alarm);
+    expect(text).toMatch(/maastopalo \(lumipeite, kuivuus/);
+    const none = { ...alarm, types: Object.fromEntries(TASK_TYPES.map((t) => [t, { ...alarm.types[t], features: {} }])) } as typeof alarm;
+    expect(weatherUseText(none)).toContain('ei käytä niitä');
+  });
+
+  it('nimeää kausihuiput kuukausikertoimista', () => {
+    const fake = { ...alarm, types: { ...alarm.types } };
+    const months = (f: number[]) => ({ ...alarm.types.rakennuspalo, month: f });
+    fake.types.rakennuspalo = months([1, 1, 1, 1, 1, 1, 1, 1.3, 1.4, 1, 1, 1]);
+    expect(busyMonths(fake, 'rakennuspalo')).toBe('elo-syyskuu');
+    fake.types.rakennuspalo = months([1.3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5]);
+    expect(busyMonths(fake, 'rakennuspalo')).toBe('joulu-tammikuu');
+    fake.types.rakennuspalo = months([1, 1, 1, 1, 1.25, 1, 1, 1, 1, 1, 1, 1]);
+    expect(busyMonths(fake, 'rakennuspalo')).toBe('toukokuu');
+    fake.types.rakennuspalo = months(new Array(12).fill(1));
+    expect(busyMonths(fake, 'rakennuspalo')).toBe('ei selvää kausivaihtelua');
+  });
+
+  it('huomautukset vaihtuvat datan ja sään lähteen mukaan', () => {
     expect(bannerText(meta)).toContain('simuloituun dataan');
     expect(simulationNote(meta)).toContain('simuloituun dataan');
-    const real: DatasetMeta = { ...meta, source: 'pronto', seed: null };
+    const real: DatasetMeta = { ...meta, source: 'pronto', seed: null, weatherSource: 'simulated' };
     expect(bannerText(real)).not.toContain('simuloi');
     expect(simulationNote(real)).not.toContain('simuloi');
-    expect(simulationNote(real)).toContain('eivätkä virallisia');
+    expect(simulationNote(real)).toContain('PRONTO');
+    expect(simulationNote(real)).toContain('Säätietoja ei ole käytössä');
+    expect(simulationNote({ ...real, weatherSource: 'fmi' })).toContain('Ilmatieteen laitos');
   });
 });

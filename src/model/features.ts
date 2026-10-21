@@ -189,13 +189,13 @@ export type FeatureKey = keyof typeof FEATURES;
  * pelastustoimen yleiseen tietoon, ei simulaation sisäisiin kertoimiin.
  */
 export const TYPE_FEATURES: Record<TaskType, readonly FeatureKey[]> = {
-  ensivaste: ['slipperiness'],
-  liikenneonnettomuus: ['slipperiness', 'snowfall'],
   rakennuspalo: ['heating', 'cooling'],
+  // Savun haju ja palovaroittimet: lämmityskaudella savukaasuja tulee sisään odottamatta.
+  tarkastustehtava: ['heating'],
+  liikenneonnettomuus: ['slipperiness', 'snowfall'],
+  vahingontorjunta: ['storm', 'heavyRain'],
   maastopalo: ['snowCover', 'dryness', 'warmth', 'wind'],
   muu_tulipalo: ['dryness'],
-  vahingontorjunta: ['storm', 'heavyRain'],
-  automaattinen_paloilmoitus: [],
   muu: [],
 };
 
@@ -203,7 +203,8 @@ export const TYPE_FEATURES: Record<TaskType, readonly FeatureKey[]> = {
 export function partOfDay(hour: number): string {
   if (hour < 6) return 'yö';
   if (hour < 10) return 'aamu';
-  if (hour < 16) return 'päivä';
+  if (hour < 12) return 'aamupäivä';
+  if (hour < 17) return 'iltapäivä';
   if (hour < 22) return 'ilta';
   return 'myöhäisilta';
 }
