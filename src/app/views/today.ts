@@ -4,7 +4,11 @@ import { LEVEL_TEXT, type ReasonView, type TodayView } from '../todayView';
 
 const reasonList = (items: readonly ReasonView[], direction: 'up' | 'down' = 'up'): string =>
   `<ul class="reasons reasons-${direction}">${items
-    .map((r) => `<li><strong>${esc(r.title)}</strong>${r.detail ? `<span>${esc(r.detail)}</span>` : ''}</li>`)
+    .map(
+      (r) =>
+        `<li><strong>${esc(r.title)}</strong>${r.detail ? `<span>${esc(r.detail)}</span>` : ''}` +
+        `${r.note ? `<small class="why">${esc(r.note)}</small>` : ''}</li>`,
+    )
     .join('')}</ul>`;
 
 const hours = (start: number, end: number): string => `klo ${start}-${end}`;

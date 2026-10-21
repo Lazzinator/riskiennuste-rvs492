@@ -23,9 +23,10 @@ describe('muotoilu', () => {
   });
 
   it('esittää kertoimet ymmärrettävästi', () => {
-    expect(fmtEffect(1.4)).toBe('+40 %');
-    expect(fmtEffect(0.4)).toBe('-60 %');
-    expect(fmtEffect(2.06)).toBe('noin 2,1-kertaisesti');
+    expect(fmtEffect(1.4)).toBe('40 % tavallista enemmän');
+    expect(fmtEffect(0.4)).toBe('60 % tavallista vähemmän');
+    expect(fmtEffect(2.06)).toBe('noin 2,1-kertaisesti tavalliseen verrattuna');
+    expect(fmtPercent(-0.01)).toBe('0 %');
     expect(fmtRatio(1.02)).toBe('tavallisen päivän tasoa');
     expect(fmtRatio(1.3)).toBe('noin 30 % tavallista enemmän');
     expect(fmtRatio(0.8)).toBe('noin 20 % tavallista vähemmän');
@@ -87,6 +88,22 @@ describe('Tänään-näkymä', () => {
     expect(slip.detail).toMatch(/liikenneonnettomuuksia|ensivastetehtäviä/i);
   });
 
+  it('pakkaspäivänä lämmitys näkyy syynä perusteluineen', () => {
+    const day = weather.find((w) => w.date >= '2026-11-01' && w.tempMean < -8)!;
+    const v = buildTodayView(alarm, weather, day.date);
+    const heating = v.reasons.find((r) => /pakkanen/i.test(r.title))!;
+    expect(heating.detail).toMatch(/^Rakennuspaloja/);
+    expect(heating.note).toMatch(/nokipalot/);
+  });
+
+  it('lumipeitteen aikana maastopaloja ei esitetä riskiä nostavana', () => {
+    const snowy = weather.filter((w) => w.date >= '2026-01-01' && w.snowDepthCm > 0);
+    for (const w of snowy) {
+      const v = buildTodayView(alarm, weather, w.date);
+      for (const r of v.reasons) expect(r.detail).not.toMatch(/maastopaloja/i);
+    }
+  });
+
   it('maastopaloriski on 1 lumipeitteellä', () => {
     const day = weather.find((w) => w.date >= '2026-01-01' && w.snowDepthCm > 10)!;
     expect(buildTodayView(alarm, weather, day.date).wildfire.level).toBe(1);
@@ -120,6 +137,8 @@ describe('Tänään-näkymä', () => {
       expect(html).not.toContain('—');
       expect(html).not.toContain('undefined');
       expect(html).not.toContain('NaN');
+      // Prosenttiluvut eivät ole koskaan negatiivisia.
+      expect(html).not.toMatch(/-\d+ %/);
     }
   });
 });

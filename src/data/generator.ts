@@ -6,7 +6,7 @@
 
 import { buildGrid, cellFeatures, spatialWeight } from './geo';
 import { createRng, type Rng } from './rng';
-import { daysSinceRain } from './weather';
+import { daysSinceRain, temperatureChange } from './weather';
 import {
   SCHEMA_VERSION,
   TASK_TYPES,
@@ -62,7 +62,8 @@ const URGENCY_PROBS: Record<TaskType, readonly [number, number, number, number]>
 const MONTH_FACTORS: Record<TaskType, readonly number[]> = {
   ensivaste: [1, 1, 1, 1, 1, 1.1, 1.15, 1.1, 1, 1, 1, 1.05],
   liikenneonnettomuus: [1.3, 1.2, 1.0, 0.85, 0.85, 0.95, 1.05, 0.95, 0.9, 1.0, 1.15, 1.3],
-  rakennuspalo: [1.4, 1.3, 1.1, 0.9, 0.7, 0.6, 0.6, 0.6, 0.7, 0.9, 1.1, 1.5],
+  // Talven ylimäärä tulee pääosin lämmityksestä (sääkerroin), kuukausi kuvaa lähinnä joulua ja saunomista.
+  rakennuspalo: [1.1, 1.05, 1.0, 0.95, 0.9, 0.9, 0.95, 0.9, 0.9, 1.0, 1.05, 1.25],
   maastopalo: [0.05, 0.05, 0.3, 2.5, 3.0, 2.2, 1.4, 1.0, 0.5, 0.2, 0.05, 0.05],
   muu_tulipalo: [0.9, 0.8, 0.9, 1.2, 1.3, 1.2, 1.2, 1.1, 0.9, 0.9, 0.8, 1.0],
   vahingontorjunta: [1.2, 1.0, 0.9, 0.9, 0.8, 0.9, 1.0, 1.1, 1.0, 1.2, 1.2, 1.2],
@@ -237,15 +238,23 @@ export function simulateWeather(
 interface DayContext {
   w: WeatherDay;
   dry: number;
+  /** Keskilämpötilan muutos edellisen viikon keskiarvoon, °C */
+  tempChange: number;
 }
 
 /** Sään vaikutus tehtävätyypin intensiteettiin (kerroin). */
-export function weatherFactor(type: TaskType, { w, dry }: DayContext): number {
+export function weatherFactor(type: TaskType, { w, dry, tempChange }: DayContext): number {
   switch (type) {
     case 'liikenneonnettomuus':
       return (1 + 0.5 * w.slipperiness) * (w.precipMm >= 5 && w.tempMean < 0.5 ? 1.4 : 1);
-    case 'rakennuspalo':
-      return 1 + 0.04 * Math.max(0, 5 - w.tempMean);
+    case 'rakennuspalo': {
+      // Lämmitys: tulisijojen ja hormien käyttö kasvaa sään kylmetessä (savukaasut, nokipalot,
+      // huonokuntoisesta hormista yläpohjaan leviävät palot). Lämmitysraja noin +15 °C.
+      const heating = 1 + 0.05 * Math.max(0, 15 - w.tempMean);
+      // Jyrkkä kylmeneminen: lämmitystä lisätään äkillisesti ja käyttämättömät hormit otetaan käyttöön.
+      const cooling = tempChange <= -5 && w.tempMean < 10 ? 1.6 : 1;
+      return heating * cooling;
+    }
     case 'maastopalo': {
       if (w.snowDepthCm > 0) return 0.02;
       const dryness = Math.min(dry, 20) / 10;
@@ -280,6 +289,7 @@ export function generateIncidents(
 ): Incident[] {
   const years = new Set(weather.map((w) => w.date.slice(0, 4))).size;
   const dry = daysSinceRain(weather);
+  const tempChange = temperatureChange(weather);
   const hours = weather.length * 24;
 
   // 1) Suhteellinen intensiteetti joka tunnille ja tyypille.
@@ -294,7 +304,7 @@ export function generateIncidents(
       const dayF =
         MONTH_FACTORS[type][month]! *
         WEEKDAY_FACTORS[type][weekday]! *
-        weatherFactor(type, { w, dry: dry[i]! });
+        weatherFactor(type, { w, dry: dry[i]!, tempChange: tempChange[i]! });
       for (let h = 0; h < 24; h++) {
         arr[i * 24 + h] = dayF * hp[h]! * weekendNightFactor(type, weekday, h);
       }

@@ -190,6 +190,12 @@ main {
   border-left-color: var(--level-matala);
 }
 
+.reasons .why {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
 .reasons span {
   color: var(--muted);
   font-size: 0.9rem;

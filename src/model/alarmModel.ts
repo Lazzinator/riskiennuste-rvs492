@@ -14,6 +14,7 @@ import {
   TYPE_FEATURES,
   WEEKDAY_NAMES,
   type DayContext,
+  type Feature,
   type FeatureKey,
 } from './features';
 
@@ -72,11 +73,19 @@ interface FactorGroup {
   prior: number;
   /** Kuukausien kertoimet tasoitetaan naapurikuukausien kanssa. */
   circular: boolean;
+  monotone?: 'increasing' | 'decreasing';
 }
+
+/**
+ * Tyyppikohtainen kuukausikutistus. Rakennuspalojen talvihuippu johtuu pääosin lämmityksestä,
+ * ja kuukausi ja lämpötila kulkevat lähes yhdessä. Vahva kutistus antaa lämpötilan selittää
+ * kausivaihtelun, jolloin malli reagoi myös poikkeuksellisen kylmään syksyyn tai lämpimään talveen.
+ */
+export const TYPE_MONTH_PRIOR: Partial<Record<TaskType, number>> = { rakennuspalo: 30 };
 
 function groupsFor(type: TaskType, opt: FitOptions): FactorGroup[] {
   return [
-    { key: 'month', nLevels: 12, levelOf: (c) => c.month, prior: opt.priorMonth, circular: true },
+    { key: 'month', nLevels: 12, levelOf: (c) => c.month, prior: TYPE_MONTH_PRIOR[type] ?? opt.priorMonth, circular: true },
     { key: 'weekday', nLevels: 7, levelOf: (c) => c.weekday, prior: opt.priorWeekday, circular: false },
     ...TYPE_FEATURES[type].map((k) => ({
       key: k,
@@ -84,8 +93,27 @@ function groupsFor(type: TaskType, opt: FitOptions): FactorGroup[] {
       levelOf: FEATURES[k].levelOf,
       prior: opt.priorFeature,
       circular: false,
+      monotone: (FEATURES[k] as Feature).monotone,
     })),
   ];
+}
+
+/**
+ * Painotettu isotoninen regressio (pool adjacent violators): lähin kasvava jono.
+ * Rikkovat naapuriluokat yhdistetään painotetuksi keskiarvoksi.
+ */
+export function isotonicIncreasing(values: readonly number[], weights: readonly number[]): number[] {
+  const blocks: Array<{ value: number; weight: number; count: number }> = [];
+  values.forEach((v, i) => {
+    blocks.push({ value: v, weight: Math.max(weights[i]!, 1e-9), count: 1 });
+    while (blocks.length > 1 && blocks[blocks.length - 2]!.value > blocks[blocks.length - 1]!.value) {
+      const b = blocks.pop()!;
+      const a = blocks.pop()!;
+      const weight = a.weight + b.weight;
+      blocks.push({ value: (a.value * a.weight + b.value * b.weight) / weight, weight, count: a.count + b.count });
+    }
+  });
+  return blocks.flatMap((b) => new Array<number>(b.count).fill(b.value));
 }
 
 const smoothCircular = (xs: readonly number[]): number[] =>
@@ -144,6 +172,14 @@ function fitDaily(
       }
       for (let l = 0; l < group.nLevels; l++) {
         f[l] = exp[l]! > 0 ? (obs[l]! + group.prior) / (exp[l]! + group.prior) : 1;
+      }
+      if (group.monotone) {
+        const w = exp.map((e) => e + group.prior);
+        const fitted =
+          group.monotone === 'increasing'
+            ? isotonicIncreasing(f, w)
+            : isotonicIncreasing([...f].reverse(), [...w].reverse()).reverse();
+        fitted.forEach((v, l) => (f[l] = v));
       }
       // Normalisoidaan niin, että keskimääräisen päivän kerroin on 1, ja siirretään taso perustasoon.
       let mean = 0;
@@ -273,6 +309,12 @@ export function riskLevel(model: AlarmModel, ratio: number): RiskLevel {
 const MIN_PART_EFFECT = 0.1;
 /** Syy näytetään vain, jos se muuttaa koko päivän hälytysmäärää vähintään näin paljon. */
 const MIN_TOTAL_EFFECT = 0.03;
+/**
+ * Tehtävätyypin osuus syystä näytetään vain, jos sen vaikutus on vähintään tämä osuus päivän
+ * odotetusta määrästä. Muuten esim. lumipeitteen aikana näkyisi "maastopaloja 2-kertaisesti",
+ * vaikka maastopaloriski on käytännössä nolla.
+ */
+const MIN_PART_SHARE = 0.01;
 
 export function predictDay(model: AlarmModel, ctx: DayContext): DayPrediction {
   const byType = expectedByType(model, ctx);
@@ -306,7 +348,9 @@ export function predictDay(model: AlarmModel, ctx: DayContext): DayPrediction {
       label: g.label,
       extra,
       multiplier: total / (total - extra),
-      parts: g.parts.filter((p) => Math.abs(p.multiplier - 1) >= MIN_PART_EFFECT),
+      parts: g.parts.filter(
+        (p) => Math.abs(p.multiplier - 1) >= MIN_PART_EFFECT && Math.abs(p.extra) >= MIN_PART_SHARE * total,
+      ),
     };
   });
   // Osat järjestetään vaikutuksen mukaan syyn suuntaan: nostavissa suurin lisäys ensin.

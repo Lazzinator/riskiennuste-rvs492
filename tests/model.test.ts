@@ -5,6 +5,7 @@ import {
   dailyCounts,
   fitAlarmModel,
   hourlyExpected,
+  isotonicIncreasing,
   peakWindow,
   predictDay,
   predictRange,
@@ -68,6 +69,21 @@ describe('hälytysmallin sovitus', () => {
     expect(JSON.parse(JSON.stringify(model))).toEqual(model);
   });
 
+  it('lämmitystarpeen kerroin ei pienene sään kylmetessä, vähälläkään datalla', () => {
+    for (const seed of [1, 2, 3, 4, 5, 492]) {
+      const d = generateDataset({ seed });
+      const m = fitAlarmModel(buildDayContexts(d.weather), d.incidents);
+      const h = m.types.rakennuspalo.features.heating!;
+      for (let l = 1; l < h.length; l++) expect(h[l]!).toBeGreaterThanOrEqual(h[l - 1]! - 1e-12);
+    }
+  });
+
+  it('isotoninen regressio yhdistää rikkovat naapurit painotetusti', () => {
+    expect(isotonicIncreasing([1, 3, 2, 4], [1, 1, 1, 1])).toEqual([1, 2.5, 2.5, 4]);
+    expect(isotonicIncreasing([2, 1], [3, 1])).toEqual([1.75, 1.75]);
+    expect(isotonicIncreasing([1, 2, 3], [1, 1, 1])).toEqual([1, 2, 3]);
+  });
+
   it('kutistaa kertoimet kohti ykköstä, kun dataa on vähän', () => {
     const oneYear = days.filter((d) => d.date.startsWith('2023'));
     const small = fitAlarmModel(oneYear, ds.incidents);
@@ -95,9 +111,21 @@ describe('kertoimien palautuminen pitkästä simulaatiosta', () => {
     expect(s[2]! / s[0]!).toBeGreaterThan(1.5);
   });
 
-  it('löytää pakkasen vaikutuksen rakennuspaloihin ja myrskyn vahingontorjuntaan', () => {
-    const f = T.rakennuspalo.features.frost!;
-    expect(f[3]!).toBeGreaterThan(f[0]!);
+  it('löytää lämmityksen ja kylmenevän sään vaikutuksen rakennuspaloihin', () => {
+    // Rakennuspaloja on vain noin 4 vuodessa, joten tähän tarvitaan pidempi simulaatio.
+    const veryLong = generateDataset({ seed: 11, startYear: 1900, endYear: 2019 });
+    const m = fitAlarmModel(buildDayContexts(veryLong.weather), veryLong.incidents).types.rakennuspalo;
+    const h = m.features.heating!;
+    // Simulaatiossa pakkasella (noin -9 °C) noin 2,2-kertaisesti lämpimään verrattuna.
+    expect(h[3]! / h[0]!).toBeGreaterThan(1.7);
+    expect(h[4]!).toBeGreaterThan(h[2]!);
+    const c = m.features.cooling!;
+    expect(c[1]! / c[0]!).toBeGreaterThan(1.3);
+    // Kausivaihtelu selittyy lämpötilalla, joten kuukausikerroin jää maltilliseksi.
+    expect(Math.max(...m.month) / Math.min(...m.month)).toBeLessThan(1.6);
+  }, 30_000);
+
+  it('löytää myrskyn vaikutuksen vahingontorjuntaan', () => {
     const s = T.vahingontorjunta.features.storm!;
     expect(s[2]!).toBeGreaterThan(1.3 * s[0]!);
   });

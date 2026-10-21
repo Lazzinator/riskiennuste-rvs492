@@ -11,13 +11,15 @@ import {
   type Reason,
   type RiskLevel,
 } from '../model/alarmModel';
-import { buildDayContexts, FEATURES, partOfDay } from '../model/features';
+import { buildDayContexts, FEATURES, partOfDay, type Feature, type FeatureKey } from '../model/features';
 import { WILDFIRE_LEVEL_LABELS, wildfireRisk, type WildfireLevel } from '../model/wildfire';
 import { capitalize, fmtDate, fmtEffect, fmtNum, TASK_PARTITIVE } from './format';
 
 export interface ReasonView {
   title: string;
   detail: string;
+  /** Miksi tekijä vaikuttaa (vain osalla sääselittäjistä) */
+  note?: string;
 }
 
 export interface DayRow {
@@ -65,7 +67,8 @@ export function reasonView(r: Reason): ReasonView {
     .slice(0, 2)
     .map((p) => `${TASK_PARTITIVE[p.taskType]} ${fmtEffect(p.multiplier)}`)
     .join(', ');
-  return { title, detail: capitalize(detail) };
+  const feature = FEATURES[r.key.split(':')[0] as FeatureKey] as Feature | undefined;
+  return { title, detail: capitalize(detail), ...(feature?.note ? { note: feature.note } : {}) };
 }
 
 export function weatherSummary(w: WeatherDay): string {

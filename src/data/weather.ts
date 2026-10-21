@@ -12,3 +12,15 @@ export function daysSinceRain(weather: readonly WeatherDay[]): number[] {
   }
   return out;
 }
+
+/**
+ * Päivän keskilämpötila miinus edellisen 7 päivän keskiarvo. Negatiivinen = sää kylmenee.
+ * Jakson alussa käytetään niitä edellisiä päiviä, jotka ovat saatavilla.
+ */
+export function temperatureChange(weather: readonly WeatherDay[], days = 7): number[] {
+  return weather.map((w, i) => {
+    const prev = weather.slice(Math.max(0, i - days), i);
+    if (prev.length === 0) return 0;
+    return w.tempMean - prev.reduce((s, p) => s + p.tempMean, 0) / prev.length;
+  });
+}

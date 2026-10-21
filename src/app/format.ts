@@ -8,17 +8,23 @@ export function fmtNum(x: number, decimals = 1): string {
   return s === `-${(0).toFixed(decimals).replace('.', ',')}` ? s.slice(1) : s;
 }
 
+/** Todennäköisyys prosentteina. Ei koskaan negatiivinen. */
 export function fmtPercent(p: number): string {
+  p = Math.max(0, p);
   const pct = Math.round(p * 100);
   if (p > 0 && pct < 1) return 'alle 1 %';
   return `${pct} %`;
 }
 
-/** Kertoimen esitys syyteksteissä: "+40 %", "-60 %" tai "noin 2,1-kertaisesti". */
+/**
+ * Kertoimen esitys syyteksteissä sanoin, ilman etumerkkejä, jotta muutosta ei lueta
+ * todennäköisyydeksi: "40 % tavallista enemmän", "60 % tavallista vähemmän" tai
+ * "noin 2,1-kertaisesti tavalliseen verrattuna".
+ */
 export function fmtEffect(multiplier: number): string {
-  if (multiplier >= 2) return `noin ${fmtNum(multiplier, 1)}-kertaisesti`;
+  if (multiplier >= 2) return `noin ${fmtNum(multiplier, 1)}-kertaisesti tavalliseen verrattuna`;
   const pct = Math.round(Math.abs(multiplier - 1) * 100);
-  return multiplier >= 1 ? `+${pct} %` : `-${pct} %`;
+  return multiplier >= 1 ? `${pct} % tavallista enemmän` : `${pct} % tavallista vähemmän`;
 }
 
 /** Suhde tavalliseen päivään sanoina. */
